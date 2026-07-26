@@ -95,6 +95,9 @@ export const FUNDING_SOURCE_META: Record<
   },
 };
 
+// On-chain gas charged on every USDC transfer, as a percent of the amount.
+export const USDC_GAS_FEE_PERCENT = 0.05;
+
 export interface TransactionCost {
   userFee: string; // Headline fee summary
   merchantMDR?: string; // Merchant Discount Rate (for P2M)
@@ -199,13 +202,14 @@ const RAIL_FEE_SCHEDULES: Record<
     },
   },
   usdc: {
-    // Stablecoin payout. Bank funding is a cheap on-ramp; cards pay
-    // card-network interchange on top of the network fee.
+    // Stablecoin payout. Every USDC transfer pays on-chain gas of
+    // USDC_GAS_FEE_PERCENT regardless of funding, plus a flat network fee.
+    // Cards add card-network interchange on top of that.
     supportedFunding: ["bank", "debit", "credit"],
     feeSchedule: {
-      bank: { percent: 0, fixed: 0.25 },
-      debit: { percent: 1.5, fixed: 0.25 },
-      credit: { percent: 2.5, fixed: 0.25 },
+      bank: { percent: USDC_GAS_FEE_PERCENT, fixed: 0.25 },
+      debit: { percent: 1.5 + USDC_GAS_FEE_PERCENT, fixed: 0.25 },
+      credit: { percent: 2.5 + USDC_GAS_FEE_PERCENT, fixed: 0.25 },
     },
   },
 };
@@ -308,10 +312,10 @@ export const TRANSACTION_COSTS: Record<Rail, TransactionCost> = {
     ),
   },
   usdc: {
-    userFee: "$0.25 from bank · 1.5-2.5% on cards",
+    userFee: "0.05% gas + $0.25 from bank · 1.5-2.5% on cards",
     merchantMDR: "0.5%",
     feeDetails:
-      "USDC settles on-chain in seconds, 24/7 including weekends. Funding from your bank costs a flat $0.25 network fee. Card on-ramps add 1.5% (debit) or 2.5% (credit) on top. The recipient receives USDC 1:1 with USD.",
+      "USDC settles on-chain in seconds, 24/7 including weekends. Every transfer pays 0.05% on-chain gas plus a flat $0.25 network fee. Card on-ramps add 1.5% (debit) or 2.5% (credit) on top of gas. The recipient receives USDC 1:1 with USD.",
     taxApplicable: false,
     ...RAIL_FEE_SCHEDULES.usdc,
     calculateFee: makeCalculateFee(
@@ -637,7 +641,7 @@ export const CONTACTS: Contact[] = [
       { id: "i2", rail: "zelle", label: "Zelle", detail: "sarah.j@email.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "i3", rail: "ach", label: "Chase Checking", detail: "****4521", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 98, enabled: true },
       { id: "i4", rail: "cashapp", label: "Cash App", detail: "$sarahj", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 97, enabled: true },
-      { id: "i4b", rail: "usdc", label: "USDC Wallet", detail: "0x7a2f...4c91", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25", successRate: 99, enabled: true },
+      { id: "i4b", rail: "usdc", label: "USDC Wallet", detail: "0x7a2f...4c91", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 99, enabled: true },
     ],
   },
   {
@@ -656,7 +660,7 @@ export const CONTACTS: Contact[] = [
       { id: "i5", rail: "zelle", label: "Zelle", detail: "+1 (415) 555-0123", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i6", rail: "venmo", label: "Venmo", detail: "@mikechen", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "i7", rail: "ach", label: "Bank of America", detail: "****7710", routingNumber: "026009593", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 97, enabled: true },
-      { id: "i7b", rail: "usdc", label: "USDC Wallet", detail: "mikechen.eth", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25", successRate: 100, enabled: true },
+      { id: "i7b", rail: "usdc", label: "USDC Wallet", detail: "mikechen.eth", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 100, enabled: true },
     ],
   },
   {
@@ -675,7 +679,7 @@ export const CONTACTS: Contact[] = [
       { id: "i8", rail: "paypal", label: "PayPal", detail: "emily.davis@gmail.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i9", rail: "zelle", label: "Zelle", detail: "emily.davis@gmail.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "i10", rail: "cashapp", label: "Cash App", detail: "$emilyd", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 96, enabled: true },
-      { id: "i10b", rail: "usdc", label: "USDC Wallet", detail: "0xb14c...9f02", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25", successRate: 98, enabled: true },
+      { id: "i10b", rail: "usdc", label: "USDC Wallet", detail: "0xb14c...9f02", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 98, enabled: true },
     ],
   },
   {
@@ -694,7 +698,7 @@ export const CONTACTS: Contact[] = [
       { id: "i11", rail: "cashapp", label: "Cash App", detail: "$jameswilson", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i12", rail: "venmo", label: "Venmo", detail: "@jameswilson", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 97, enabled: true },
       { id: "i13", rail: "wire", label: "Wells Fargo", detail: "****6655", routingNumber: "121000248", currency: "USD", settlementSpeed: "Same-day", fee: "$25", successRate: 99, enabled: true },
-      { id: "i13b", rail: "usdc", label: "USDC Wallet", detail: "0x3e8d...1b47", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25", successRate: 99, enabled: true },
+      { id: "i13b", rail: "usdc", label: "USDC Wallet", detail: "0x3e8d...1b47", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 99, enabled: true },
     ],
   },
   {
@@ -769,7 +773,7 @@ export const CONTACTS: Contact[] = [
       { id: "bi1", rail: "paypal", label: "Amazon Pay", detail: "payments@amazon.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "bi2", rail: "venmo", label: "Venmo", detail: "@amazonpay", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "bi3", rail: "ach", label: "Chase Business", detail: "****8821", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 99, enabled: true },
-      { id: "bi3b", rail: "usdc", label: "USDC Treasury", detail: "0xa9f1...20de", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25", successRate: 100, enabled: true },
+      { id: "bi3b", rail: "usdc", label: "USDC Treasury", detail: "0xa9f1...20de", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 100, enabled: true },
     ],
   },
   {
@@ -827,7 +831,7 @@ export const CONTACTS: Contact[] = [
       { id: "bi11", rail: "paypal", label: "PayPal", detail: "payments@bestbuy.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "bi12", rail: "ach", label: "Business Account", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 98, enabled: true },
       { id: "bi13", rail: "wire", label: "Wire Transfer", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "Same-day", fee: "$25", successRate: 99, enabled: true },
-      { id: "bi13b", rail: "usdc", label: "USDC Treasury", detail: "0xc027...5a83", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25", successRate: 99, enabled: true },
+      { id: "bi13b", rail: "usdc", label: "USDC Treasury", detail: "0xc027...5a83", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 99, enabled: true },
     ],
   },
   {
