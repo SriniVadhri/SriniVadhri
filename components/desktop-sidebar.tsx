@@ -37,7 +37,7 @@ const STEPS = [
   },
   {
     icon: Zap,
-    title: "AI Payment Scoring",
+    title: "Routing Agent Scoring",
     desc: "Speed, cost, and success rate -- all scored in real time.",
   },
   {
@@ -127,8 +127,8 @@ export function DesktopSidebar({
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               Pay anyone via Venmo, Cash App, Zelle, PayPal, or bank transfer.
-              Our AI picks the fastest and cheapest payment option for you
-              automatically.
+              Our Routing Agent picks the fastest and cheapest payment option
+              for you automatically.
             </p>
           </div>
 

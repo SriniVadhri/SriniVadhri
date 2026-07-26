@@ -288,8 +288,8 @@ export function HomeScreen({ onNavigate, onSendTo }: Props) {
             </h3>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               Pay anyone via Venmo, Cash App, Zelle, PayPal, or bank transfer.
-              Our AI picks the fastest and cheapest payment method for you
-              automatically.
+              Our Routing Agent picks the fastest and cheapest payment method
+              for you automatically.
             </p>
           </div>
         </div>

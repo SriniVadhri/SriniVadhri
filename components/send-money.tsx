@@ -100,7 +100,7 @@ export function SendMoney({ initialContactId, onBack }: Props) {
     }
   }, [initialContactId, handleSelectContact]);
 
-  // Sort instruments by AI score (fee depends on amount + funding source)
+  // Sort instruments by Routing Agent score (fee depends on amount + funding source)
   const sortedInstruments = useMemo(() => {
     if (!selectedContact) return [];
     const amt = Number.parseFloat(amount) || 0;
@@ -344,12 +344,13 @@ export function SendMoney({ initialContactId, onBack }: Props) {
               className="w-40 border-none bg-transparent text-center text-4xl font-bold text-foreground outline-none placeholder:text-muted-foreground/30"
             />
           </div>
-          {/* AI Recommendation */}
+          {/* Routing Agent Recommendation */}
           {topRail && !exceedsP2PLimit && (
             <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-1.5">
               <Sparkles className="h-3.5 w-3.5 text-success" />
               <span className="text-xs font-medium text-success">
-                AI recommends {topRail.label} &middot; {topRail.settlementSpeed}{" "}
+                Routing Agent recommends {topRail.label} &middot;{" "}
+                {topRail.settlementSpeed}{" "}
                 &middot; {topRail.fee} fee
               </span>
             </div>
@@ -365,7 +366,7 @@ export function SendMoney({ initialContactId, onBack }: Props) {
                 </span>
               </div>
               <span className="text-[11px] text-muted-foreground">
-                AI will suggest ACH (up to $100K, 1-3 days) or wire transfer for this amount
+                The Routing Agent will suggest ACH (up to $100K, 1-3 days) or wire transfer for this amount
               </span>
             </div>
           )}
@@ -461,11 +462,11 @@ export function SendMoney({ initialContactId, onBack }: Props) {
           </h1>
         </div>
 
-        {/* AI Header */}
+        {/* Routing Agent Header */}
         <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
           <Sparkles className="h-4 w-4 shrink-0 text-primary" />
           <p className="text-xs font-medium text-foreground">
-            AI scored{" "}
+            Routing Agent scored{" "}
             {sortedInstruments.length} payment options for {formatUSD(amountNum)}
           </p>
         </div>
@@ -575,7 +576,7 @@ export function SendMoney({ initialContactId, onBack }: Props) {
                 )}
                 {isTop && !isSuggested && (
                   <div className="absolute -top-2.5 right-3 rounded-full bg-success px-2.5 py-0.5 text-[10px] font-bold text-success-foreground">
-                    AI Recommended
+                          Agent Recommended
                   </div>
                 )}
                 <div className="flex items-center gap-3">
@@ -599,7 +600,9 @@ export function SendMoney({ initialContactId, onBack }: Props) {
                   </div>
                   <div className="text-right">
                     <p className={cn("text-lg font-bold", isBlocked ? "text-muted-foreground" : "text-primary")}>{score}</p>
-                    <p className="text-[10px] text-muted-foreground">AI Score</p>
+                    <p className="text-[10px] text-muted-foreground">
+                    Agent Score
+                  </p>
                   </div>
                 </div>
                 
@@ -878,7 +881,9 @@ export function SendMoney({ initialContactId, onBack }: Props) {
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-xs text-muted-foreground">AI Score</span>
+              <span className="text-xs text-muted-foreground">
+                Routing Agent Score
+              </span>
               <span className="text-xs font-bold text-primary">{score}/100</span>
             </div>
             {note && (

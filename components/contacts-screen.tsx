@@ -297,7 +297,7 @@ export function ContactsScreen({ onSendTo }: Props) {
                                 {score}
                               </p>
                               <p className="text-[9px] text-muted-foreground">
-                                Score
+                                Agent Score
                               </p>
                             </div>
                           </div>

@@ -22,7 +22,7 @@ const TAB_TITLES: Record<Tab, string> = {
 
 const TAB_SUBTITLES: Record<Tab, string> = {
   home: "Welcome back. Pay anyone via Venmo, Zelle, or bank transfer.",
-  send: "Pay via Venmo, Cash App, Zelle, PayPal -- AI picks the best option.",
+  send: "Pay via Venmo, Cash App, Zelle, PayPal -- the Routing Agent picks the best option.",
   contacts: "Browse contacts and their linked usernames & bank accounts.",
   activity: "View your complete transaction history.",
   profile: "Manage your account, payment methods, and preferences.",
