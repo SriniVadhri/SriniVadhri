@@ -323,10 +323,14 @@ export function PayInvoices() {
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col gap-0.5 rounded-xl bg-card p-3 shadow-sm">
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <FileText className="h-3 w-3" />
-            <span className="text-[10px] font-medium">Open</span>
+        <div className="flex flex-col gap-1 rounded-xl bg-card p-3 shadow-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-chart-1/15">
+              <FileText className="h-3 w-3 text-chart-1" />
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Open
+            </span>
           </div>
           <p className="text-base font-bold text-foreground">
             {openInvoices.length}
@@ -335,10 +339,14 @@ export function PayInvoices() {
             {formatUSD(totalPayable)} payable
           </p>
         </div>
-        <div className="flex flex-col gap-0.5 rounded-xl bg-card p-3 shadow-sm">
-          <div className="flex items-center gap-1 text-success">
-            <CheckCircle2 className="h-3 w-3" />
-            <span className="text-[10px] font-medium">Locked in</span>
+        <div className="flex flex-col gap-1 rounded-xl bg-card p-3 shadow-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-success/15">
+              <CheckCircle2 className="h-3 w-3 text-success" />
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Locked in
+            </span>
           </div>
           <p className="text-base font-bold text-success">
             {formatUSD(agreedSavings)}
@@ -347,10 +355,14 @@ export function PayInvoices() {
             discounts agreed
           </p>
         </div>
-        <div className="flex flex-col gap-0.5 rounded-xl bg-card p-3 shadow-sm">
-          <div className="flex items-center gap-1 text-primary">
-            <Tag className="h-3 w-3" />
-            <span className="text-[10px] font-medium">On the table</span>
+        <div className="flex flex-col gap-1 rounded-xl bg-card p-3 shadow-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-warning/25">
+              <Tag className="h-3 w-3 text-warning-foreground" />
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground">
+              On the table
+            </span>
           </div>
           <p className="text-base font-bold text-primary">
             {formatUSD(openSavings)}

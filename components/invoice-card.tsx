@@ -220,10 +220,17 @@ export function InvoiceCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
             <span className="font-mono">{invoice.invoiceNumber}</span>
             <span>&middot;</span>
-            <span className="flex items-center gap-0.5">
-              <Globe className="h-3 w-3" />
-              {supplier.crossBorder ? supplier.countryLabel : "Domestic"}
-            </span>
+                  <span className="flex items-center gap-0.5">
+                    <Globe
+                      className={cn(
+                        "h-3 w-3",
+                        supplier.crossBorder
+                          ? "text-chart-5"
+                          : "text-muted-foreground"
+                      )}
+                    />
+                    {supplier.crossBorder ? supplier.countryLabel : "Domestic"}
+                  </span>
             <span>&middot;</span>
             <span
               className={cn(
@@ -307,12 +314,14 @@ export function InvoiceCard({
 
           {/* ── Early payment discount ─────────────────────────────── */}
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-1.5">
-              <Tag className="h-3.5 w-3.5 text-primary" />
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Early Payment Discount
-              </p>
-            </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-warning/25">
+                    <Tag className="h-3 w-3 text-warning-foreground" />
+                  </span>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Early Payment Discount
+                  </p>
+                </div>
 
             {/* Agreed terms */}
             {agreed && (
@@ -396,7 +405,9 @@ export function InvoiceCard({
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
-                    <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-chart-3/15">
+                      <MessageSquare className="h-3 w-3 text-chart-3" />
+                    </span>
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Negotiation ({invoice.negotiation.offers.length})
                     </p>
@@ -622,12 +633,14 @@ export function InvoiceCard({
           {/* ── Payment rails ──────────────────────────────────────── */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  How {supplier.name} accepts payment
-                </p>
-              </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary/15">
+                      <Sparkles className="h-3 w-3 text-primary" />
+                    </span>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      How {supplier.name} accepts payment
+                    </p>
+                  </div>
               <span className="text-[10px] text-muted-foreground">
                 scored for {formatUSD(payable)}
               </span>
@@ -660,10 +673,19 @@ export function InvoiceCard({
                         : "border-transparent bg-muted/50 hover:bg-muted"
                     )}
                   >
+                    {/* bg-card underneath keeps the translucent rail tint from
+                        stacking with the row's own muted background */}
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card">
-                      <RailIcon
-                        className={cn("h-4 w-4", RAIL_META[inst.rail].color)}
-                      />
+                      <div
+                        className={cn(
+                          "flex h-full w-full items-center justify-center rounded-lg",
+                          RAIL_META[inst.rail].tint
+                        )}
+                      >
+                        <RailIcon
+                          className={cn("h-4 w-4", RAIL_META[inst.rail].color)}
+                        />
+                      </div>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -683,11 +705,18 @@ export function InvoiceCard({
                       </div>
                       <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
                         <span className="flex items-center gap-0.5">
-                          <Clock className="h-2.5 w-2.5" />
+                          <Clock className="h-2.5 w-2.5 text-chart-1" />
                           {inst.settlementSpeed}
                         </span>
                         <span className="flex items-center gap-0.5">
-                          <TrendingDown className="h-2.5 w-2.5" />
+                          <TrendingDown
+                            className={cn(
+                              "h-2.5 w-2.5",
+                              breakdown.fee === 0
+                                ? "text-success"
+                                : "text-chart-5"
+                            )}
+                          />
                           {breakdown.fee === 0
                             ? "Free"
                             : `${formatGasFee(breakdown.fee)} fee`}

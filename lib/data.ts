@@ -57,16 +57,21 @@ export interface Transaction {
   note: string;
 }
 
-export const RAIL_META: Record<Rail, { icon: string; color: string; label: string }> = {
-  venmo: { icon: "Wallet", color: "text-chart-1", label: "Venmo" },
-  cashapp: { icon: "Zap", color: "text-success", label: "Cash App" },
-  zelle: { icon: "Smartphone", color: "text-chart-4", label: "Zelle" },
-  paypal: { icon: "Wallet", color: "text-chart-2", label: "PayPal" },
-  ach: { icon: "Building2", color: "text-chart-3", label: "ACH Transfer" },
-  wire: { icon: "ArrowRightLeft", color: "text-chart-5", label: "Wire Transfer" },
-  applepay: { icon: "Wallet", color: "text-primary", label: "Apple Pay" },
-  bank: { icon: "Building2", color: "text-accent", label: "Bank Transfer" },
-  usdc: { icon: "Coins", color: "text-chart-2", label: "USDC" },
+// `tint` is the translucent background for the icon chip, matched to `color`
+// so each rail reads as its own colored badge instead of a grey glyph.
+export const RAIL_META: Record<
+  Rail,
+  { icon: string; color: string; tint: string; label: string }
+> = {
+  venmo: { icon: "Wallet", color: "text-chart-1", tint: "bg-chart-1/15", label: "Venmo" },
+  cashapp: { icon: "Zap", color: "text-success", tint: "bg-success/15", label: "Cash App" },
+  zelle: { icon: "Smartphone", color: "text-chart-4", tint: "bg-chart-4/25", label: "Zelle" },
+  paypal: { icon: "Wallet", color: "text-chart-2", tint: "bg-chart-2/15", label: "PayPal" },
+  ach: { icon: "Building2", color: "text-chart-3", tint: "bg-chart-3/15", label: "ACH Transfer" },
+  wire: { icon: "ArrowRightLeft", color: "text-chart-5", tint: "bg-chart-5/25", label: "Wire Transfer" },
+  applepay: { icon: "Wallet", color: "text-primary", tint: "bg-primary/15", label: "Apple Pay" },
+  bank: { icon: "Building2", color: "text-chart-4", tint: "bg-chart-4/25", label: "Bank Transfer" },
+  usdc: { icon: "Coins", color: "text-chart-2", tint: "bg-chart-2/15", label: "USDC" },
 };
 
 // ─── Transaction Costs (US Payment Systems) ────────────────────────────
