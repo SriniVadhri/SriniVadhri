@@ -148,8 +148,14 @@ export function InvoiceCard({
     ? computeDiscountTerms(invoice, previewPct, previewDays)
     : null;
 
+  // A declined negotiation records a 0% offer to close the thread — that is a
+  // rejection, not terms on the table, so it must not render as an offer.
   const offerOnTable =
-    latestOffer && latestOffer.from === "supplier" && !agreed
+    latestOffer &&
+    latestOffer.from === "supplier" &&
+    !agreed &&
+    invoice.negotiation.status !== "declined" &&
+    latestOffer.discountPercent > 0
       ? computeDiscountTerms(
           invoice,
           latestOffer.discountPercent,
@@ -160,6 +166,12 @@ export function InvoiceCard({
   const canAct =
     invoice.negotiation.status !== "accepted" &&
     invoice.negotiation.status !== "declined";
+
+  // Supplier's offer requires paying by a date that has already passed
+  const offerLapsed =
+    latestOffer?.from === "supplier" &&
+    offerOnTable !== null &&
+    offerOnTable.windowDaysLeft < 0;
 
   return (
     <div className="overflow-hidden rounded-xl bg-card shadow-sm">
@@ -420,7 +432,10 @@ export function InvoiceCard({
             {canAct && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-2">
-                  {latestOffer?.from === "supplier" && (
+                  {/* A lapsed window can't be accepted — the supplier's terms
+                      required paying by a date that has already passed. The
+                      payer can still counter with a fresh window. */}
+                  {latestOffer?.from === "supplier" && !offerLapsed && (
                     <button
                       type="button"
                       onClick={() => onAccept(invoice.id)}
@@ -438,9 +453,20 @@ export function InvoiceCard({
                     <ArrowRightLeft className="h-3 w-3" />
                     {invoice.negotiation.offers.length === 0
                       ? "Request a discount"
-                      : "Counter offer"}
+                      : offerLapsed
+                        ? "Counter with a new window"
+                        : "Counter offer"}
                   </button>
                 </div>
+
+                {offerLapsed && (
+                  <p className="flex items-center gap-1 text-[11px] text-destructive">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    The pay-by date on this offer has passed, so it can no
+                    longer be accepted as written. Counter with a later window
+                    to keep a discount in play.
+                  </p>
+                )}
 
                 {invoice.negotiation.status === "payer_countered" && (
                   <p className="flex items-center gap-1 text-[11px] text-muted-foreground">

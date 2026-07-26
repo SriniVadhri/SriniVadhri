@@ -344,7 +344,7 @@ export const INVOICES: Invoice[] = [
     poNumber: "PO-87902",
     supplierId: "s5",
     amount: 89300,
-    issueDate: "2026-07-06",
+    issueDate: "2026-07-22",
     netTerms: 60,
     description: "Knit goods, SS27 sampling + first bulk tranche",
     status: "pending",
@@ -358,7 +358,7 @@ export const INVOICES: Invoice[] = [
           payWithinDays: 10,
           message:
             "Opening ask: 3% for a 10-day clear. We can fund same-week on stablecoin.",
-          at: "Jul 6, 7:15 AM",
+          at: "Jul 22, 7:15 AM",
         },
         {
           id: "o8",
@@ -367,7 +367,7 @@ export const INVOICES: Invoice[] = [
           payWithinDays: 14,
           message:
             "3% is past our floor with freight where it is. Best we can do is 2.5% at 14 days.",
-          at: "Jul 7, 6:02 AM",
+          at: "Jul 23, 6:02 AM",
         },
       ],
     },
