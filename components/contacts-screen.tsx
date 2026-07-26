@@ -32,6 +32,7 @@ import {
   TRANSACTION_COSTS,
   computeRouteScore,
   computeRouteScoreBreakdown,
+  USDC_NETWORKS,
   type Contact,
 } from "@/lib/data";
 
@@ -277,6 +278,15 @@ export function ContactsScreen({ onSendTo }: Props) {
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium text-foreground">
                                 {inst.label}
+                                {inst.rail === "usdc" && (
+                                  <span className="ml-1 font-normal text-muted-foreground">
+                                    on{" "}
+                                    {
+                                      USDC_NETWORKS[inst.network ?? "base"]
+                                        .label
+                                    }
+                                  </span>
+                                )}
                               </p>
                               <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                 <span className="flex items-center gap-0.5">

@@ -10,6 +10,9 @@ import {
   computeRouteScore,
   computeRouteScoreBreakdown,
   SCORE_WEIGHTS,
+  USDC_NETWORKS,
+  formatGasFee,
+  getInstrumentFee,
   formatUSD,
   checkVelocityLimit,
   getTransactionFeeDisplay,
@@ -550,12 +553,9 @@ export function SendMoney({ initialContactId, onBack }: Props) {
             const RailIcon = RAIL_ICONS[inst.rail] || Zap;
             const acceptsFunding = railSupportsFunding(inst.rail, funding);
             const effectiveFunding = resolveFundingSource(inst.rail, funding);
-            const railFee = getTransactionFeeDisplay(
-              inst.rail,
-              amountNum,
-              selectedContact.contactType === "business",
-              funding
-            );
+            // breakdown.fee already includes flat on-chain gas for USDC
+            const railFee =
+              breakdown.fee === 0 ? "Free" : formatGasFee(breakdown.fee);
             const isTop = idx === 0 && inst.limitCheck.allowed;
             const selected = selectedInstrument?.id === inst.id;
             const isBlocked = !inst.limitCheck.allowed;
@@ -713,6 +713,27 @@ export function SendMoney({ initialContactId, onBack }: Props) {
                         )}
                       </span>
                     </div>
+                    {inst.rail === "usdc" && (
+                      <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2 py-1">
+                        <Coins className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">
+                          <span className="font-medium text-foreground">
+                            {USDC_NETWORKS[inst.network ?? "base"].label}
+                          </span>{" "}
+                          &middot; {formatGasFee(breakdown.railFee)} ramp +{" "}
+                          {formatGasFee(breakdown.gasFee)} flat gas in{" "}
+                          {USDC_NETWORKS[inst.network ?? "base"].gasToken} (
+                          {formatGasFee(
+                            USDC_NETWORKS[inst.network ?? "base"].gasMin
+                          )}
+                          –
+                          {formatGasFee(
+                            USDC_NETWORKS[inst.network ?? "base"].gasMax
+                          )}
+                          , flat regardless of amount)
+                        </span>
+                      </div>
+                    )}
                     {!acceptsFunding && (
                       <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-2 py-1">
                         <Info className="h-3 w-3 text-warning" />
@@ -826,12 +847,11 @@ export function SendMoney({ initialContactId, onBack }: Props) {
       funding
     );
     const score = confirmBreakdown.score;
-    const confirmFee = getTransactionFeeDisplay(
-      selectedInstrument.rail,
-      confirmAmount,
-      selectedContact.contactType === "business",
-      funding
-    );
+    // Includes flat on-chain gas for USDC
+    const confirmFee =
+      confirmBreakdown.fee === 0
+        ? "Free"
+        : formatGasFee(confirmBreakdown.fee);
     const RailIcon = RAIL_ICONS[selectedInstrument.rail] || Zap;
     return (
       <div className="flex flex-col gap-5 p-4">
@@ -924,16 +944,30 @@ export function SendMoney({ initialContactId, onBack }: Props) {
             <div className="flex justify-between">
               <span className="text-xs text-muted-foreground">Total Debited</span>
               <span className="text-xs font-bold text-foreground">
-                {formatUSD(
-                  (Number.parseFloat(amount) || 0) +
-                    TRANSACTION_COSTS[selectedInstrument.rail].calculateFee(
-                      Number.parseFloat(amount) || 0,
-                      selectedContact.contactType === "business",
-                      funding
-                    )
-                )}
+                {formatUSD((Number.parseFloat(amount) || 0) + confirmBreakdown.fee)}
               </span>
             </div>
+            {selectedInstrument.rail === "usdc" && (
+              <div className="flex items-start justify-between">
+                <span className="text-xs text-muted-foreground">
+                  On-chain Gas
+                </span>
+                <div className="text-right">
+                  <span className="text-xs font-medium text-foreground">
+                    {formatGasFee(confirmBreakdown.gasFee)}
+                  </span>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {USDC_NETWORKS[selectedInstrument.network ?? "base"].label}{" "}
+                    &middot; paid in{" "}
+                    {
+                      USDC_NETWORKS[selectedInstrument.network ?? "base"]
+                        .gasToken
+                    }{" "}
+                    &middot; flat per transfer
+                  </p>
+                </div>
+              </div>
+            )}
             {TRANSACTION_COSTS[selectedInstrument.rail].merchantMDR && selectedContact.contactType === "business" && (
               <div className="flex justify-between">
                 <span className="text-xs text-muted-foreground">Merchant MDR</span>

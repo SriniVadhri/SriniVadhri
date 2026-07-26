@@ -22,7 +22,8 @@ export interface PaymentInstrument {
   fee: string;
   successRate: number; // 0-100
   enabled: boolean;
-}
+  network?: UsdcNetwork; // USDC only: chain the wallet settles on
+  }
 
 export interface Contact {
   id: string;
@@ -95,8 +96,91 @@ export const FUNDING_SOURCE_META: Record<
   },
 };
 
-// On-chain gas charged on every USDC transfer, as a percent of the amount.
-export const USDC_GAS_FEE_PERCENT = 0.05;
+// ─── USDC networks ──────────────────────────────────────────────────────
+// Gas is a FLAT cost per transfer paid in the chain's native token — it does
+// not scale with the amount sent. Sending $10 and $100,000 over Base costs
+// the same gas. Ranges reflect observed network congestion.
+export type UsdcNetwork =
+  | "solana"
+  | "base"
+  | "polygon"
+  | "arbitrum"
+  | "optimism"
+  | "ethereum";
+
+export const USDC_NETWORKS: Record<
+  UsdcNetwork,
+  {
+    label: string;
+    gasToken: string;
+    gasMin: number;
+    gasMax: number;
+    typicalGas: number; // what the agent budgets for at current conditions
+    settlementSpeed: string;
+  }
+> = {
+  solana: {
+    label: "Solana",
+    gasToken: "SOL",
+    gasMin: 0.001,
+    gasMax: 0.01,
+    typicalGas: 0.003,
+    settlementSpeed: "Seconds",
+  },
+  base: {
+    label: "Base",
+    gasToken: "ETH",
+    gasMin: 0.001,
+    gasMax: 0.05,
+    typicalGas: 0.01,
+    settlementSpeed: "Seconds",
+  },
+  polygon: {
+    label: "Polygon",
+    gasToken: "POL",
+    gasMin: 0.001,
+    gasMax: 0.05,
+    typicalGas: 0.01,
+    settlementSpeed: "Seconds",
+  },
+  arbitrum: {
+    label: "Arbitrum",
+    gasToken: "ETH",
+    gasMin: 0.01,
+    gasMax: 0.1,
+    typicalGas: 0.04,
+    settlementSpeed: "Seconds",
+  },
+  optimism: {
+    label: "Optimism",
+    gasToken: "ETH",
+    gasMin: 0.01,
+    gasMax: 0.1,
+    typicalGas: 0.04,
+    settlementSpeed: "Seconds",
+  },
+  ethereum: {
+    label: "Ethereum Mainnet",
+    gasToken: "ETH",
+    gasMin: 1,
+    gasMax: 15,
+    typicalGas: 4.5,
+    settlementSpeed: "Seconds",
+  },
+};
+
+export const DEFAULT_USDC_NETWORK: UsdcNetwork = "base";
+
+// Flat gas cost the agent budgets for on a given network
+export function getUsdcGasFee(network: UsdcNetwork = DEFAULT_USDC_NETWORK) {
+  return USDC_NETWORKS[network].typicalGas;
+}
+
+export function formatGasFee(fee: number): string {
+  // Sub-cent gas needs more precision than currency formatting allows
+  if (fee < 0.01) return `$${fee.toFixed(4).replace(/0+$/, "")}`;
+  return `$${fee.toFixed(2)}`;
+}
 
 export interface TransactionCost {
   userFee: string; // Headline fee summary
@@ -202,14 +286,14 @@ const RAIL_FEE_SCHEDULES: Record<
     },
   },
   usdc: {
-    // Stablecoin payout. Every USDC transfer pays on-chain gas of
-    // USDC_GAS_FEE_PERCENT regardless of funding, plus a flat network fee.
-    // Cards add card-network interchange on top of that.
+    // Stablecoin payout. This schedule covers the on/off-ramp only — flat
+    // on-chain gas is added per instrument from its network (see
+    // getInstrumentFee), since gas depends on the chain, not the amount.
     supportedFunding: ["bank", "debit", "credit"],
     feeSchedule: {
-      bank: { percent: USDC_GAS_FEE_PERCENT, fixed: 0.25 },
-      debit: { percent: 1.5 + USDC_GAS_FEE_PERCENT, fixed: 0.25 },
-      credit: { percent: 2.5 + USDC_GAS_FEE_PERCENT, fixed: 0.25 },
+      bank: { percent: 0, fixed: 0.25 },
+      debit: { percent: 1.5, fixed: 0.25 },
+      credit: { percent: 2.5, fixed: 0.25 },
     },
   },
 };
@@ -312,10 +396,10 @@ export const TRANSACTION_COSTS: Record<Rail, TransactionCost> = {
     ),
   },
   usdc: {
-    userFee: "0.05% gas + $0.25 from bank · 1.5-2.5% on cards",
+    userFee: "$0.25 ramp + flat gas · 1.5-2.5% on cards",
     merchantMDR: "0.5%",
     feeDetails:
-      "USDC settles on-chain in seconds, 24/7 including weekends. Every transfer pays 0.05% on-chain gas plus a flat $0.25 network fee. Card on-ramps add 1.5% (debit) or 2.5% (credit) on top of gas. The recipient receives USDC 1:1 with USD.",
+      "USDC settles on-chain in seconds, 24/7 including weekends. Gas is a flat cost per transfer that does not scale with the amount: under a cent on Solana, Base, and Polygon; a few cents on Arbitrum and Optimism; $1-$15 on Ethereum mainnet. A $0.25 ramp fee applies from bank, and card on-ramps add 1.5% (debit) or 2.5% (credit). The recipient receives USDC 1:1 with USD.",
     taxApplicable: false,
     ...RAIL_FEE_SCHEDULES.usdc,
     calculateFee: makeCalculateFee(
@@ -334,6 +418,29 @@ export function railSupportsFunding(rail: Rail, funding: FundingSource): boolean
 export function resolveFundingSource(rail: Rail, funding: FundingSource): FundingSource {
   const supported = TRANSACTION_COSTS[rail].supportedFunding;
   return supported.includes(funding) ? funding : supported[0];
+}
+
+// Total sender cost for a specific instrument: the rail's ramp fee plus, for
+// USDC, the flat on-chain gas of that wallet's network.
+export function getInstrumentFee(
+  inst: PaymentInstrument,
+  amount: number,
+  funding: FundingSource = "bank"
+): { total: number; railFee: number; gasFee: number } {
+  const railFee = TRANSACTION_COSTS[inst.rail].calculateFee(
+    amount,
+    false,
+    funding
+  );
+  const gasFee =
+    inst.rail === "usdc"
+      ? getUsdcGasFee(inst.network ?? DEFAULT_USDC_NETWORK)
+      : 0;
+  return {
+    total: Math.round((railFee + gasFee) * 10000) / 10000,
+    railFee,
+    gasFee,
+  };
 }
 
 // Helper function to get formatted fee string
@@ -536,7 +643,9 @@ export interface RouteScoreBreakdown {
   reliabilityPoints: number;
   speedPoints: number;
   costPoints: number;
-  fee: number;
+  fee: number; // total sender cost, including gas
+  railFee: number; // ramp/rail portion
+  gasFee: number; // flat on-chain gas (USDC only)
   fundingPenalty: number;
 }
 
@@ -566,10 +675,15 @@ export function computeRouteScoreBreakdown(
 
   // Cost is judged as a share of the amount being sent, so a $25 wire fee
   // barely dents a $50K transfer but tanks a $200 one.
-  const fee =
+  const costs =
     amount > 0
-      ? TRANSACTION_COSTS[inst.rail].calculateFee(amount, false, funding)
-      : Number.parseFloat(inst.fee.replace(/[^0-9.]/g, "")) || 0;
+      ? getInstrumentFee(inst, amount, funding)
+      : {
+          total: Number.parseFloat(inst.fee.replace(/[^0-9.]/g, "")) || 0,
+          railFee: Number.parseFloat(inst.fee.replace(/[^0-9.]/g, "")) || 0,
+          gasFee: 0,
+        };
+  const { total: fee, railFee, gasFee } = costs;
   const feeRatio = amount > 0 ? fee / amount : fee > 0 ? 0.02 : 0;
 
   let costFactor: number;
@@ -599,6 +713,8 @@ export function computeRouteScoreBreakdown(
     speedPoints: Math.round(speedPoints),
     costPoints: Math.round(costPoints),
     fee,
+    railFee,
+    gasFee,
     fundingPenalty,
   };
 }
@@ -641,7 +757,7 @@ export const CONTACTS: Contact[] = [
       { id: "i2", rail: "zelle", label: "Zelle", detail: "sarah.j@email.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "i3", rail: "ach", label: "Chase Checking", detail: "****4521", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 98, enabled: true },
       { id: "i4", rail: "cashapp", label: "Cash App", detail: "$sarahj", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 97, enabled: true },
-      { id: "i4b", rail: "usdc", label: "USDC Wallet", detail: "0x7a2f...4c91", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 99, enabled: true },
+      { id: "i4b", rail: "usdc", label: "USDC Wallet", detail: "0x7a2f...4c91", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25 + gas", successRate: 99, enabled: true, network: "base" },
     ],
   },
   {
@@ -660,7 +776,7 @@ export const CONTACTS: Contact[] = [
       { id: "i5", rail: "zelle", label: "Zelle", detail: "+1 (415) 555-0123", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i6", rail: "venmo", label: "Venmo", detail: "@mikechen", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "i7", rail: "ach", label: "Bank of America", detail: "****7710", routingNumber: "026009593", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 97, enabled: true },
-      { id: "i7b", rail: "usdc", label: "USDC Wallet", detail: "mikechen.eth", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 100, enabled: true },
+      { id: "i7b", rail: "usdc", label: "USDC Wallet", detail: "mikechen.eth", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25 + gas", successRate: 100, enabled: true, network: "ethereum" },
     ],
   },
   {
@@ -679,7 +795,7 @@ export const CONTACTS: Contact[] = [
       { id: "i8", rail: "paypal", label: "PayPal", detail: "emily.davis@gmail.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i9", rail: "zelle", label: "Zelle", detail: "emily.davis@gmail.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "i10", rail: "cashapp", label: "Cash App", detail: "$emilyd", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 96, enabled: true },
-      { id: "i10b", rail: "usdc", label: "USDC Wallet", detail: "0xb14c...9f02", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 98, enabled: true },
+      { id: "i10b", rail: "usdc", label: "USDC Wallet", detail: "0xb14c...9f02", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25 + gas", successRate: 98, enabled: true, network: "solana" },
     ],
   },
   {
@@ -698,7 +814,7 @@ export const CONTACTS: Contact[] = [
       { id: "i11", rail: "cashapp", label: "Cash App", detail: "$jameswilson", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i12", rail: "venmo", label: "Venmo", detail: "@jameswilson", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 97, enabled: true },
       { id: "i13", rail: "wire", label: "Wells Fargo", detail: "****6655", routingNumber: "121000248", currency: "USD", settlementSpeed: "Same-day", fee: "$25", successRate: 99, enabled: true },
-      { id: "i13b", rail: "usdc", label: "USDC Wallet", detail: "0x3e8d...1b47", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 99, enabled: true },
+      { id: "i13b", rail: "usdc", label: "USDC Wallet", detail: "0x3e8d...1b47", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25 + gas", successRate: 99, enabled: true, network: "arbitrum" },
     ],
   },
   {
@@ -773,7 +889,7 @@ export const CONTACTS: Contact[] = [
       { id: "bi1", rail: "paypal", label: "Amazon Pay", detail: "payments@amazon.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "bi2", rail: "venmo", label: "Venmo", detail: "@amazonpay", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "bi3", rail: "ach", label: "Chase Business", detail: "****8821", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 99, enabled: true },
-      { id: "bi3b", rail: "usdc", label: "USDC Treasury", detail: "0xa9f1...20de", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 100, enabled: true },
+      { id: "bi3b", rail: "usdc", label: "USDC Treasury", detail: "0xa9f1...20de", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25 + gas", successRate: 100, enabled: true, network: "base" },
     ],
   },
   {
@@ -831,7 +947,7 @@ export const CONTACTS: Contact[] = [
       { id: "bi11", rail: "paypal", label: "PayPal", detail: "payments@bestbuy.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "bi12", rail: "ach", label: "Business Account", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 98, enabled: true },
       { id: "bi13", rail: "wire", label: "Wire Transfer", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "Same-day", fee: "$25", successRate: 99, enabled: true },
-      { id: "bi13b", rail: "usdc", label: "USDC Treasury", detail: "0xc027...5a83", currency: "USDC", settlementSpeed: "Seconds", fee: "0.05% + $0.25", successRate: 99, enabled: true },
+      { id: "bi13b", rail: "usdc", label: "USDC Treasury", detail: "0xc027...5a83", currency: "USDC", settlementSpeed: "Seconds", fee: "$0.25 + gas", successRate: 99, enabled: true, network: "polygon" },
     ],
   },
   {
