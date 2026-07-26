@@ -90,6 +90,7 @@ export function PayInvoices() {
       result = result.filter(
         (i) =>
           i.negotiation.status === "payer_countered" ||
+          i.negotiation.status === "awaiting_supplier" ||
           i.negotiation.status === "supplier_countered"
       );
 
@@ -117,17 +118,19 @@ export function PayInvoices() {
     window.setTimeout(() => setToast(null), 4000);
   }
 
-  // Payer sends terms; the supplier responds immediately per their policy
+  // Payer sends terms. The offer sits pending on the supplier's desk, then
+  // their reply lands a moment later — so each round reads as a real turn
+  // rather than resolving inside the same click.
   function handleCounter(
     invoiceId: string,
     discountPercent: number,
     payWithinDays: number
   ) {
+    const stamp = formatOfferTimestamp();
+
     setInvoices((prev) =>
       prev.map((inv) => {
         if (inv.id !== invoiceId) return inv;
-
-        const stamp = formatOfferTimestamp();
         const payerOffer = {
           id: `${inv.id}-p${inv.negotiation.offers.length + 1}`,
           from: "payer" as const,
@@ -136,53 +139,105 @@ export function PayInvoices() {
           message: `We're proposing ${discountPercent}% for payment within ${payWithinDays} days.`,
           at: stamp,
         };
-
-        const response = computeSupplierResponse(
-          inv,
-          discountPercent,
-          payWithinDays
-        );
-        const supplierReply = {
-          id: `${inv.id}-s${inv.negotiation.offers.length + 2}`,
-          from: "supplier" as const,
-          discountPercent: response.discountPercent,
-          payWithinDays: response.payWithinDays,
-          message: response.message,
-          at: stamp,
+        return {
+          ...inv,
+          negotiation: {
+            ...inv.negotiation,
+            status: "awaiting_supplier" as const,
+            offers: [...inv.negotiation.offers, payerOffer],
+          },
         };
+      })
+    );
 
-        const offers = [...inv.negotiation.offers, payerOffer, supplierReply];
-        const supplierName = getSupplier(inv.supplierId).name;
+    showToast(`Sent ${discountPercent}% / ${payWithinDays}-day terms — awaiting reply`);
 
-        if (response.action === "accept") {
+    // Supplier turn
+    window.setTimeout(() => {
+      setInvoices((prev) =>
+        prev.map((inv) => {
+          if (inv.id !== invoiceId) return inv;
+          if (inv.negotiation.status !== "awaiting_supplier") return inv;
+
+          const response = computeSupplierResponse(
+            inv,
+            discountPercent,
+            payWithinDays
+          );
+          const supplierReply = {
+            id: `${inv.id}-s${inv.negotiation.offers.length + 1}`,
+            from: "supplier" as const,
+            discountPercent: response.discountPercent,
+            payWithinDays: response.payWithinDays,
+            message: response.message,
+            at: stamp,
+            isFinal: response.isFinal,
+          };
+
+          const offers = [...inv.negotiation.offers, supplierReply];
+          const supplierName = getSupplier(inv.supplierId).name;
+
+          if (response.action === "accept") {
+            showToast(
+              `${supplierName} accepted ${response.discountPercent}% on ${inv.invoiceNumber}`
+            );
+            return {
+              ...inv,
+              negotiation: {
+                status: "accepted" as const,
+                offers,
+                agreedDiscountPercent: response.discountPercent,
+                agreedPayWithinDays: response.payWithinDays,
+              },
+            };
+          }
+
+          if (response.action === "decline") {
+            showToast(`${supplierName} declined on ${inv.invoiceNumber}`);
+            return {
+              ...inv,
+              negotiation: { status: "declined" as const, offers },
+            };
+          }
+
           showToast(
-            `${supplierName} accepted ${response.discountPercent}% on ${inv.invoiceNumber}`
+            response.isFinal
+              ? `${supplierName} sent a final offer of ${response.discountPercent}% on ${inv.invoiceNumber}`
+              : `${supplierName} countered at ${response.discountPercent}% on ${inv.invoiceNumber}`
           );
           return {
             ...inv,
-            negotiation: {
-              status: "accepted" as const,
-              offers,
-              agreedDiscountPercent: response.discountPercent,
-              agreedPayWithinDays: response.payWithinDays,
-            },
+            negotiation: { status: "supplier_countered" as const, offers },
           };
-        }
+        })
+      );
+    }, 1600);
+  }
 
-        if (response.action === "decline") {
-          showToast(`${supplierName} declined on ${inv.invoiceNumber}`);
-          return {
-            ...inv,
-            negotiation: { status: "declined" as const, offers },
-          };
-        }
-
+  // Payer walks away and settles at full net terms, closing the thread
+  function handleWalkAway(invoiceId: string) {
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        if (inv.id !== invoiceId) return inv;
         showToast(
-          `${supplierName} countered at ${response.discountPercent}% on ${inv.invoiceNumber}`
+          `Closed discount talks on ${inv.invoiceNumber} — paying full term`
         );
         return {
           ...inv,
-          negotiation: { status: "supplier_countered" as const, offers },
+          negotiation: {
+            status: "declined" as const,
+            offers: [
+              ...inv.negotiation.offers,
+              {
+                id: `${inv.id}-walk`,
+                from: "payer" as const,
+                discountPercent: 0,
+                payWithinDays: inv.netTerms,
+                message: `We'll pass on the discount and pay at Net ${inv.netTerms}.`,
+                at: formatOfferTimestamp(),
+              },
+            ],
+          },
         };
       })
     );
@@ -349,9 +404,10 @@ export function PayInvoices() {
                     expandedId === invoice.id ? null : invoice.id
                   )
                 }
-                onCounter={handleCounter}
-                onAccept={handleAccept}
-                onPay={handlePay}
+              onCounter={handleCounter}
+              onAccept={handleAccept}
+              onWalkAway={handleWalkAway}
+              onPay={handlePay}
               />
             </div>
           </div>

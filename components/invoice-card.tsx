@@ -39,6 +39,11 @@ import {
   getDueDate,
   getLatestOffer,
   getPayableAmount,
+  getPayerRoundsUsed,
+  getRoundsRemaining,
+  hasFinalOffer,
+  canCounter,
+  MAX_PAYER_ROUNDS,
   getSupplier,
   formatDate,
   type Invoice,
@@ -69,6 +74,10 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
     label: "Awaiting supplier",
     className: "bg-warning/20 text-warning-foreground",
   },
+  awaiting_supplier: {
+    label: "Awaiting supplier",
+    className: "bg-warning/20 text-warning-foreground",
+  },
   supplier_countered: {
     label: "Counter received",
     className: "bg-primary/15 text-primary",
@@ -93,6 +102,7 @@ interface Props {
     payWithinDays: number
   ) => void;
   onAccept: (invoiceId: string) => void;
+  onWalkAway: (invoiceId: string) => void;
   onPay: (invoiceId: string, instrumentId: string) => void;
 }
 
@@ -102,6 +112,7 @@ export function InvoiceCard({
   onToggle,
   onCounter,
   onAccept,
+  onWalkAway,
   onPay,
 }: Props) {
   const supplier = getSupplier(invoice.supplierId);
@@ -166,6 +177,13 @@ export function InvoiceCard({
   const canAct =
     invoice.negotiation.status !== "accepted" &&
     invoice.negotiation.status !== "declined";
+
+  const awaitingSupplier =
+    invoice.negotiation.status === "awaiting_supplier";
+  const roundsUsed = getPayerRoundsUsed(invoice);
+  const roundsLeft = getRoundsRemaining(invoice);
+  const finalOffer = hasFinalOffer(invoice);
+  const mayCounter = canCounter(invoice);
 
   // Supplier's offer requires paying by a date that has already passed
   const offerLapsed =
@@ -333,7 +351,10 @@ export function InvoiceCard({
                 <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div>
                   <p className="text-xs font-semibold text-foreground">
-                    Supplier declined an early payment discount
+                    {/* Either side can close the thread — attribute it right */}
+                    {latestOffer?.from === "payer"
+                      ? "You closed discount talks on this invoice"
+                      : "Supplier declined an early payment discount"}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
                     Pay the full {formatUSD(invoice.amount)} at Net{" "}
@@ -373,11 +394,19 @@ export function InvoiceCard({
             {/* Negotiation thread */}
             {invoice.negotiation.offers.length > 0 && (
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-1.5">
-                  <MessageSquare className="h-3 w-3 text-muted-foreground" />
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Negotiation ({invoice.negotiation.offers.length})
-                  </p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Negotiation ({invoice.negotiation.offers.length})
+                    </p>
+                  </div>
+                  {canAct && (
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      Round {Math.min(roundsUsed, MAX_PAYER_ROUNDS)} of{" "}
+                      {MAX_PAYER_ROUNDS}
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {invoice.negotiation.offers.map((offer) => {
@@ -395,11 +424,16 @@ export function InvoiceCard({
                         <div className="flex items-center justify-between gap-2">
                           <span
                             className={cn(
-                              "text-[10px] font-semibold",
+                              "flex items-center gap-1 text-[10px] font-semibold",
                               isPayer ? "text-primary" : "text-foreground"
                             )}
                           >
                             {isPayer ? "You (Payer)" : supplier.name}
+                            {offer.isFinal && (
+                              <span className="rounded bg-destructive/15 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-destructive">
+                                Final
+                              </span>
+                            )}
                           </span>
                           <span className="text-[9px] text-muted-foreground">
                             {offer.at}
@@ -435,29 +469,73 @@ export function InvoiceCard({
                   {/* A lapsed window can't be accepted — the supplier's terms
                       required paying by a date that has already passed. The
                       payer can still counter with a fresh window. */}
-                  {latestOffer?.from === "supplier" && !offerLapsed && (
+                  {latestOffer?.from === "supplier" &&
+                    !offerLapsed &&
+                    !awaitingSupplier && (
+                      <button
+                        type="button"
+                        onClick={() => onAccept(invoice.id)}
+                        className="flex items-center gap-1 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-success-foreground transition-transform active:scale-95"
+                      >
+                        <CheckCircle2 className="h-3 w-3" />
+                        Accept {latestOffer.discountPercent}%
+                      </button>
+                    )}
+                  {mayCounter && (
                     <button
                       type="button"
-                      onClick={() => onAccept(invoice.id)}
-                      className="flex items-center gap-1 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-success-foreground transition-transform active:scale-95"
+                      onClick={() => setShowCounterForm((v) => !v)}
+                      className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
                     >
-                      <CheckCircle2 className="h-3 w-3" />
-                      Accept {latestOffer.discountPercent}%
+                      <ArrowRightLeft className="h-3 w-3" />
+                      {invoice.negotiation.offers.length === 0
+                        ? "Request a discount"
+                        : offerLapsed
+                          ? "Counter with a new window"
+                          : `Counter offer (${roundsLeft} left)`}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setShowCounterForm((v) => !v)}
-                    className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
-                  >
-                    <ArrowRightLeft className="h-3 w-3" />
-                    {invoice.negotiation.offers.length === 0
-                      ? "Request a discount"
-                      : offerLapsed
-                        ? "Counter with a new window"
-                        : "Counter offer"}
-                  </button>
+                  {/* Once talks are closed to new terms, the remaining choice
+                      is take the offer or pay full term. */}
+                  {!awaitingSupplier &&
+                    (finalOffer || roundsLeft === 0) &&
+                    invoice.negotiation.offers.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onWalkAway(invoice.id)}
+                        className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
+                      >
+                        <XCircle className="h-3 w-3" />
+                        Pay full term
+                      </button>
+                    )}
                 </div>
+
+                {awaitingSupplier && (
+                  <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-warning" />
+                    </span>
+                    Sent to {supplier.name} — waiting on their response.
+                  </p>
+                )}
+
+                {finalOffer && !awaitingSupplier && (
+                  <p className="flex items-center gap-1 text-[11px] text-foreground">
+                    <AlertTriangle className="h-3 w-3 shrink-0 text-destructive" />
+                    This is {supplier.name}&apos;s final offer. You can accept
+                    it or pay the full amount at Net {invoice.netTerms}.
+                  </p>
+                )}
+
+                {!finalOffer && roundsLeft === 0 && !awaitingSupplier && (
+                  <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    You&apos;ve used all {MAX_PAYER_ROUNDS} negotiation rounds
+                    on this invoice.
+                  </p>
+                )}
 
                 {offerLapsed && (
                   <p className="flex items-center gap-1 text-[11px] text-destructive">
@@ -471,8 +549,8 @@ export function InvoiceCard({
                 {invoice.negotiation.status === "payer_countered" && (
                   <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    Your counter is with {supplier.name}. Send a new one to
-                    replace it.
+                    Your terms are with {supplier.name}. Send new terms to
+                    replace them.
                   </p>
                 )}
 

@@ -39,15 +39,23 @@ export interface DiscountOffer {
   payWithinDays: number; // days from invoice issue date
   message: string;
   at: string; // human-readable timestamp
+  // Supplier's last word: the payer can accept it or pay full term, but
+  // further counters are closed off.
+  isFinal?: boolean;
 }
 
 export type NegotiationStatus =
   | "none" // nobody has proposed anything yet
   | "supplier_offered"
   | "payer_countered"
+  | "awaiting_supplier" // payer's terms sent, supplier hasn't replied yet
   | "supplier_countered"
   | "accepted"
   | "declined";
+
+// Each payer proposal is one round. After this many, the supplier's reply is
+// marked final and the back-and-forth closes.
+export const MAX_PAYER_ROUNDS = 3;
 
 export interface Negotiation {
   status: NegotiationStatus;
@@ -316,7 +324,7 @@ export const INVOICES: Invoice[] = [
     description: "Annual platform licence, tier 3 — Q3 instalment",
     status: "pending",
     negotiation: {
-      status: "payer_countered",
+      status: "awaiting_supplier",
       offers: [
         {
           id: "o5",
@@ -551,6 +559,34 @@ export function getPayableAmount(invoice: Invoice): number {
   return agreed ? agreed.netPayable : invoice.amount;
 }
 
+// ─── Negotiation rounds ──────────────────────────────────────────────────
+
+// A "round" is a proposal the payer put forward. Accepting isn't a round.
+export function getPayerRoundsUsed(invoice: Invoice): number {
+  return invoice.negotiation.offers.filter(
+    (o) => o.from === "payer" && !o.id.endsWith("-accept")
+  ).length;
+}
+
+export function getRoundsRemaining(invoice: Invoice): number {
+  return Math.max(0, MAX_PAYER_ROUNDS - getPayerRoundsUsed(invoice));
+}
+
+// True once the supplier has issued their final offer
+export function hasFinalOffer(invoice: Invoice): boolean {
+  const latest = getLatestOffer(invoice);
+  return latest?.from === "supplier" && latest.isFinal === true;
+}
+
+// Whether the payer may still send new terms
+export function canCounter(invoice: Invoice): boolean {
+  const { status } = invoice.negotiation;
+  if (status === "accepted" || status === "declined") return false;
+  if (status === "awaiting_supplier") return false;
+  if (hasFinalOffer(invoice)) return false;
+  return getRoundsRemaining(invoice) > 0;
+}
+
 // ─── Supplier auto-response ──────────────────────────────────────────────
 
 export interface SupplierResponse {
@@ -558,6 +594,7 @@ export interface SupplierResponse {
   discountPercent: number;
   payWithinDays: number;
   message: string;
+  isFinal?: boolean;
 }
 
 // Models the payee side of the back-and-forth: they accept anything inside
@@ -594,16 +631,36 @@ export function computeSupplierResponse(
   }
 
   const counterRate = Math.min(askDiscountPercent, maxDiscountPercent);
-  const counterDays = Math.max(askPayWithinDays, minPayWithinDays);
+  // A supplier would never propose a pay-by date that has already passed, so
+  // push the window far enough out that the payer has a few days to act. The
+  // policy floor is measured from issue date, which may already be behind us.
+  const MIN_ACTIONABLE_DAYS = 3;
+  const daysSinceIssue =
+    invoice.netTerms - getDaysUntilDue(invoice); // days elapsed since issue
+  const counterDays = Math.min(
+    invoice.netTerms - 1,
+    Math.max(
+      askPayWithinDays,
+      minPayWithinDays,
+      daysSinceIssue + MIN_ACTIONABLE_DAYS
+    )
+  );
   const reason = !withinRate
     ? `${askDiscountPercent}% is past our floor`
     : `we need at least ${minPayWithinDays} days to process`;
+
+  // This counter answers the payer's last permitted round, so it's their
+  // last word — accept it or settle at full term.
+  const isFinal = getPayerRoundsUsed(invoice) + 1 >= MAX_PAYER_ROUNDS;
 
   return {
     action: "counter",
     discountPercent: counterRate,
     payWithinDays: counterDays,
-    message: `${reason} — we can do ${counterRate}% if you clear within ${counterDays} days.`,
+    isFinal,
+    message: isFinal
+      ? `${reason} — ${counterRate}% within ${counterDays} days is our final offer on this invoice.`
+      : `${reason} — we can do ${counterRate}% if you clear within ${counterDays} days.`,
   };
 }
 
