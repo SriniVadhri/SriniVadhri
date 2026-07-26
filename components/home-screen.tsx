@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Send,
+  FileText,
   QrCode,
   Plus,
   ChevronRight,
@@ -63,9 +64,15 @@ export function HomeScreen({ onNavigate, onSendTo }: Props) {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-5 gap-2">
+      {/* Six tiles won't fit in one row on a phone, so wrap to 3x2 there */}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         {[
           { label: "Send", icon: ArrowUpRight, onClick: () => onNavigate("send") },
+          {
+            label: "Invoices",
+            icon: FileText,
+            onClick: () => onNavigate("invoices"),
+          },
           { label: "Business", icon: Store, onClick: () => onNavigate("send") },
           { label: "Request", icon: ArrowDownLeft, onClick: () => {} },
           { label: "Scan QR", icon: QrCode, onClick: () => {} },
