@@ -8,6 +8,8 @@ import {
   VELOCITY_LIMITS,
   TRANSACTION_COSTS,
   computeRouteScore,
+  computeRouteScoreBreakdown,
+  SCORE_WEIGHTS,
   formatUSD,
   checkVelocityLimit,
   getTransactionFeeDisplay,
@@ -44,6 +46,7 @@ import {
   Info,
   AtSign,
   Linkedin,
+  Coins,
 } from "lucide-react";
 
 const RAIL_ICONS: Record<string, typeof Zap> = {
@@ -55,6 +58,7 @@ const RAIL_ICONS: Record<string, typeof Zap> = {
   wire: ArrowRightLeft,
   applepay: Wallet,
   bank: Building2,
+  usdc: Coins,
 };
 
 type Step = "search" | "amount" | "rail" | "confirm" | "success";
@@ -463,12 +467,19 @@ export function SendMoney({ initialContactId, onBack }: Props) {
         </div>
 
         {/* Routing Agent Header */}
-        <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
-          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-          <p className="text-xs font-medium text-foreground">
-            Routing Agent scored{" "}
-            {sortedInstruments.length} payment options for {formatUSD(amountNum)}
-          </p>
+        <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p className="text-xs font-medium text-foreground">
+              Routing Agent scored {sortedInstruments.length} payment options
+              for {formatUSD(amountNum)}
+            </p>
+            <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+              Weighted {SCORE_WEIGHTS.reliability}% success rate &middot;{" "}
+              {SCORE_WEIGHTS.speed}% settlement speed &middot;{" "}
+              {SCORE_WEIGHTS.cost}% cost
+            </p>
+          </div>
         </div>
 
         {/* Funding source picker -- drives the fee on every rail below */}
@@ -530,7 +541,12 @@ export function SendMoney({ initialContactId, onBack }: Props) {
         {/* Rails */}
         <div className="flex flex-col gap-2">
           {instrumentsWithLimits.map((inst, idx) => {
-            const score = computeRouteScore(inst, amountNum, funding);
+            const breakdown = computeRouteScoreBreakdown(
+              inst,
+              amountNum,
+              funding
+            );
+            const score = breakdown.score;
             const RailIcon = RAIL_ICONS[inst.rail] || Zap;
             const acceptsFunding = railSupportsFunding(inst.rail, funding);
             const effectiveFunding = resolveFundingSource(inst.rail, funding);
@@ -619,6 +635,47 @@ export function SendMoney({ initialContactId, onBack }: Props) {
                 {/* Velocity Limit & Cost Info */}
                 {!isBlocked && (
                   <div className="flex flex-col gap-1">
+                    {/* Reliability drives 60% of the Agent Score */}
+                    <div
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg px-2 py-1",
+                        breakdown.successRate >= 99
+                          ? "bg-success/10"
+                          : breakdown.successRate >= 97
+                            ? "bg-muted/50"
+                            : "bg-warning/10"
+                      )}
+                    >
+                      <TrendingUp
+                        className={cn(
+                          "h-3 w-3",
+                          breakdown.successRate >= 99
+                            ? "text-success"
+                            : breakdown.successRate >= 97
+                              ? "text-muted-foreground"
+                              : "text-warning"
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "text-[10px] font-semibold",
+                          breakdown.successRate >= 99
+                            ? "text-success"
+                            : breakdown.successRate >= 97
+                              ? "text-foreground"
+                              : "text-warning"
+                        )}
+                      >
+                        {breakdown.successRate}% success rate
+                        <span className="font-normal text-muted-foreground">
+                          {" "}
+                          &middot; {breakdown.reliabilityPoints}/
+                          {SCORE_WEIGHTS.reliability} reliability pts
+                          {breakdown.successRate !== inst.successRate &&
+                            ` \u00B7 down from ${inst.successRate}% \u2014 ${FUNDING_SOURCE_META[effectiveFunding].shortLabel} declines`}
+                        </span>
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2 py-1">
                       <Info className="h-3 w-3 text-muted-foreground" />
                       <span className="text-[10px] text-muted-foreground">
@@ -763,7 +820,12 @@ export function SendMoney({ initialContactId, onBack }: Props) {
   // ─── STEP: Confirm ────────────────────────────────────────────────
   if (step === "confirm" && selectedInstrument) {
     const confirmAmount = Number.parseFloat(amount) || 0;
-    const score = computeRouteScore(selectedInstrument, confirmAmount, funding);
+    const confirmBreakdown = computeRouteScoreBreakdown(
+      selectedInstrument,
+      confirmAmount,
+      funding
+    );
+    const score = confirmBreakdown.score;
     const confirmFee = getTransactionFeeDisplay(
       selectedInstrument.rail,
       confirmAmount,
@@ -882,9 +944,35 @@ export function SendMoney({ initialContactId, onBack }: Props) {
             )}
             <div className="flex justify-between">
               <span className="text-xs text-muted-foreground">
+                Expected Success Rate
+              </span>
+              <span
+                className={cn(
+                  "text-xs font-semibold",
+                  confirmBreakdown.successRate >= 99
+                    ? "text-success"
+                    : confirmBreakdown.successRate >= 97
+                      ? "text-foreground"
+                      : "text-warning"
+                )}
+              >
+                {confirmBreakdown.successRate}%
+              </span>
+            </div>
+            <div className="flex items-start justify-between">
+              <span className="text-xs text-muted-foreground">
                 Routing Agent Score
               </span>
-              <span className="text-xs font-bold text-primary">{score}/100</span>
+              <div className="text-right">
+                <span className="text-xs font-bold text-primary">
+                  {score}/100
+                </span>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {confirmBreakdown.reliabilityPoints} reliability &middot;{" "}
+                  {confirmBreakdown.speedPoints} speed &middot;{" "}
+                  {confirmBreakdown.costPoints} cost
+                </p>
+              </div>
             </div>
             {note && (
               <div className="flex justify-between">

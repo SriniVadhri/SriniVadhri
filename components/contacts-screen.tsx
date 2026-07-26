@@ -24,12 +24,14 @@ import {
   Users,
   AtSign,
   Linkedin,
+  Coins,
 } from "lucide-react";
 import {
   CONTACTS,
   RAIL_META,
   TRANSACTION_COSTS,
   computeRouteScore,
+  computeRouteScoreBreakdown,
   type Contact,
 } from "@/lib/data";
 
@@ -42,6 +44,7 @@ const RAIL_ICONS: Record<string, typeof Zap> = {
   wire: ArrowRightLeft,
   applepay: Wallet,
   bank: Building2,
+  usdc: Coins,
 };
 
 interface Props {
@@ -256,7 +259,8 @@ export function ContactsScreen({ onSendTo }: Props) {
                       .map((inst) => {
                         const RailIcon =
                           RAIL_ICONS[inst.rail] || Zap;
-                        const score = computeRouteScore(inst);
+                        const breakdown =
+                          computeRouteScoreBreakdown(inst);
                         return (
                           <div
                             key={inst.id}
@@ -283,9 +287,18 @@ export function ContactsScreen({ onSendTo }: Props) {
                                   <DollarSign className="h-2.5 w-2.5" />
                                   {inst.fee}
                                 </span>
-                                <span className="flex items-center gap-0.5">
+                                <span
+                                  className={cn(
+                                    "flex items-center gap-0.5 font-semibold",
+                                    inst.successRate >= 99
+                                      ? "text-success"
+                                      : inst.successRate >= 97
+                                        ? "text-foreground"
+                                        : "text-warning"
+                                  )}
+                                >
                                   <TrendingUp className="h-2.5 w-2.5" />
-                                  {inst.successRate}%
+                                  {inst.successRate}% success
                                 </span>
                               </div>
                               <p className="mt-0.5 text-[9px] text-muted-foreground">
@@ -294,10 +307,14 @@ export function ContactsScreen({ onSendTo }: Props) {
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-bold text-primary">
-                                {score}
+                                {breakdown.score}
                               </p>
                               <p className="text-[9px] text-muted-foreground">
                                 Agent Score
+                              </p>
+                              <p className="text-[8px] text-muted-foreground">
+                                {breakdown.reliabilityPoints}R{" "}
+                                {breakdown.speedPoints}S {breakdown.costPoints}C
                               </p>
                             </div>
                           </div>
