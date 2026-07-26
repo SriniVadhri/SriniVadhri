@@ -28,6 +28,7 @@ import {
 import {
   CONTACTS,
   RAIL_META,
+  TRANSACTION_COSTS,
   computeRouteScore,
   type Contact,
 } from "@/lib/data";
@@ -287,6 +288,9 @@ export function ContactsScreen({ onSendTo }: Props) {
                                   {inst.successRate}%
                                 </span>
                               </div>
+                              <p className="mt-0.5 text-[9px] text-muted-foreground">
+                                {TRANSACTION_COSTS[inst.rail].userFee}
+                              </p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-bold text-primary">

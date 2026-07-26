@@ -11,7 +11,11 @@ import {
   formatUSD,
   checkVelocityLimit,
   getTransactionFeeDisplay,
+  FUNDING_SOURCE_META,
+  railSupportsFunding,
+  resolveFundingSource,
   type Contact,
+  type FundingSource,
   type PaymentInstrument,
   type Rail,
 } from "@/lib/data";
@@ -69,6 +73,7 @@ export function SendMoney({ initialContactId, onBack }: Props) {
     useState<PaymentInstrument | null>(null);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
+  const [funding, setFunding] = useState<FundingSource>("bank");
 
   // Search / filter contacts
   const filtered = useMemo(() => {
@@ -95,13 +100,17 @@ export function SendMoney({ initialContactId, onBack }: Props) {
     }
   }, [initialContactId, handleSelectContact]);
 
-  // Sort instruments by AI score
+  // Sort instruments by AI score (fee depends on amount + funding source)
   const sortedInstruments = useMemo(() => {
     if (!selectedContact) return [];
+    const amt = Number.parseFloat(amount) || 0;
     return [...selectedContact.instruments]
       .filter((i) => i.enabled)
-      .sort((a, b) => computeRouteScore(b) - computeRouteScore(a));
-  }, [selectedContact]);
+      .sort(
+        (a, b) =>
+          computeRouteScore(b, amt, funding) - computeRouteScore(a, amt, funding)
+      );
+  }, [selectedContact, amount, funding]);
 
   const handleSend = async () => {
     setSending(true);
@@ -461,6 +470,45 @@ export function SendMoney({ initialContactId, onBack }: Props) {
           </p>
         </div>
 
+        {/* Funding source picker -- drives the fee on every rail below */}
+        <div className="rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-semibold text-foreground">
+              Pay from
+            </p>
+          </div>
+          <div className="mt-2 flex gap-2">
+            {(["bank", "debit", "credit"] as FundingSource[]).map((src) => (
+              <button
+                key={src}
+                type="button"
+                onClick={() => setFunding(src)}
+                className={cn(
+                  "flex-1 rounded-lg border px-2 py-2 text-center transition-colors",
+                  funding === src
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-muted/40 hover:bg-muted"
+                )}
+              >
+                <span
+                  className={cn(
+                    "block text-[11px] font-semibold",
+                    funding === src ? "text-primary" : "text-foreground"
+                  )}
+                >
+                  {FUNDING_SOURCE_META[src].shortLabel}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+            {FUNDING_SOURCE_META[funding].description}
+            {funding !== "bank" &&
+              " — card funding adds a percentage fee, ACH and wire stay flat."}
+          </p>
+        </div>
+
         {/* Velocity Limit Info Banner */}
         {blockedRails.length > 0 && (
           <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3">
@@ -481,8 +529,16 @@ export function SendMoney({ initialContactId, onBack }: Props) {
         {/* Rails */}
         <div className="flex flex-col gap-2">
           {instrumentsWithLimits.map((inst, idx) => {
-            const score = computeRouteScore(inst);
+            const score = computeRouteScore(inst, amountNum, funding);
             const RailIcon = RAIL_ICONS[inst.rail] || Zap;
+            const acceptsFunding = railSupportsFunding(inst.rail, funding);
+            const effectiveFunding = resolveFundingSource(inst.rail, funding);
+            const railFee = getTransactionFeeDisplay(
+              inst.rail,
+              amountNum,
+              selectedContact.contactType === "business",
+              funding
+            );
             const isTop = idx === 0 && inst.limitCheck.allowed;
             const selected = selectedInstrument?.id === inst.id;
             const isBlocked = !inst.limitCheck.allowed;
@@ -569,15 +625,42 @@ export function SendMoney({ initialContactId, onBack }: Props) {
                         {limit.dailyCount && ` • ${limit.dailyCount} txns/day`}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-lg bg-primary/5 px-2 py-1">
-                      <DollarSign className="h-3 w-3 text-primary" />
-                      <span className="text-[10px] text-primary font-medium">
-                        Your fee: {getTransactionFeeDisplay(inst.rail, amountNum, selectedContact.contactType === "business")}
+                    <div
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg px-2 py-1",
+                        railFee === "Free" ? "bg-success/10" : "bg-primary/5"
+                      )}
+                    >
+                      <DollarSign
+                        className={cn(
+                          "h-3 w-3",
+                          railFee === "Free" ? "text-success" : "text-primary"
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium",
+                          railFee === "Free" ? "text-success" : "text-primary"
+                        )}
+                      >
+                        Your fee: {railFee}
+                        <span className="font-normal text-muted-foreground">
+                          {" "}
+                          via {FUNDING_SOURCE_META[effectiveFunding].shortLabel}
+                        </span>
                         {TRANSACTION_COSTS[inst.rail].merchantMDR && selectedContact.contactType === "business" && (
                           <span className="text-muted-foreground font-normal"> • MDR: {TRANSACTION_COSTS[inst.rail].merchantMDR}</span>
                         )}
                       </span>
                     </div>
+                    {!acceptsFunding && (
+                      <div className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-2 py-1">
+                        <Info className="h-3 w-3 text-warning" />
+                        <span className="text-[10px] font-medium text-warning">
+                          No card funding — settles from your bank account
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -617,6 +700,42 @@ export function SendMoney({ initialContactId, onBack }: Props) {
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               {TRANSACTION_COSTS[selectedInstrument.rail].feeDetails}
             </p>
+            <div className="mt-2 flex flex-col gap-1 rounded-lg bg-muted/50 p-2">
+              {(["bank", "debit", "credit"] as FundingSource[]).map((src) => {
+                const supported = railSupportsFunding(selectedInstrument.rail, src);
+                return (
+                  <div key={src} className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground">
+                      {FUNDING_SOURCE_META[src].shortLabel}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] font-semibold",
+                        !supported
+                          ? "text-muted-foreground"
+                          : getTransactionFeeDisplay(
+                                selectedInstrument.rail,
+                                Number.parseFloat(amount) || 0,
+                                selectedContact.contactType === "business",
+                                src
+                              ) === "Free"
+                            ? "text-success"
+                            : "text-foreground"
+                      )}
+                    >
+                      {supported
+                        ? getTransactionFeeDisplay(
+                            selectedInstrument.rail,
+                            Number.parseFloat(amount) || 0,
+                            selectedContact.contactType === "business",
+                            src
+                          )
+                        : "Not supported"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
             {selectedContact.contactType === "business" && TRANSACTION_COSTS[selectedInstrument.rail].merchantMDR && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 <span className="font-medium text-foreground">Merchant pays:</span> {TRANSACTION_COSTS[selectedInstrument.rail].merchantMDR} MDR
@@ -628,7 +747,7 @@ export function SendMoney({ initialContactId, onBack }: Props) {
         {/* Continue */}
         <button
           type="button"
-          disabled={!selectedInstrument || (selectedLimitCheck && !selectedLimitCheck.allowed)}
+          disabled={!selectedInstrument || selectedLimitCheck?.allowed === false}
           onClick={() => setStep("confirm")}
           className="rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-lg transition-all hover:shadow-xl active:scale-[0.99] disabled:opacity-40 disabled:shadow-none"
         >
@@ -640,7 +759,14 @@ export function SendMoney({ initialContactId, onBack }: Props) {
 
   // ─── STEP: Confirm ────────────────────────────────────────────────
   if (step === "confirm" && selectedInstrument) {
-    const score = computeRouteScore(selectedInstrument);
+    const confirmAmount = Number.parseFloat(amount) || 0;
+    const score = computeRouteScore(selectedInstrument, confirmAmount, funding);
+    const confirmFee = getTransactionFeeDisplay(
+      selectedInstrument.rail,
+      confirmAmount,
+      selectedContact.contactType === "business",
+      funding
+    );
     const RailIcon = RAIL_ICONS[selectedInstrument.rail] || Zap;
     return (
       <div className="flex flex-col gap-5 p-4">
@@ -710,9 +836,37 @@ export function SendMoney({ initialContactId, onBack }: Props) {
               </span>
             </div>
             <div className="flex justify-between">
+              <span className="text-xs text-muted-foreground">Paid From</span>
+              <span className="text-xs font-medium text-foreground">
+                {
+                  FUNDING_SOURCE_META[
+                    resolveFundingSource(selectedInstrument.rail, funding)
+                  ].label
+                }
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-xs text-muted-foreground">Your Fee</span>
-              <span className="text-xs font-medium text-success">
-                {getTransactionFeeDisplay(selectedInstrument.rail, Number.parseFloat(amount), selectedContact.contactType === "business")}
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  confirmFee === "Free" ? "text-success" : "text-foreground"
+                )}
+              >
+                {confirmFee}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-muted-foreground">Total Debited</span>
+              <span className="text-xs font-bold text-foreground">
+                {formatUSD(
+                  (Number.parseFloat(amount) || 0) +
+                    TRANSACTION_COSTS[selectedInstrument.rail].calculateFee(
+                      Number.parseFloat(amount) || 0,
+                      selectedContact.contactType === "business",
+                      funding
+                    )
+                )}
               </span>
             </div>
             {TRANSACTION_COSTS[selectedInstrument.rail].merchantMDR && selectedContact.contactType === "business" && (

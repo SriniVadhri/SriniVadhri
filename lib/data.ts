@@ -68,90 +68,260 @@ export const RAIL_META: Record<Rail, { icon: string; color: string; label: strin
 
 // ─── Transaction Costs (US Payment Systems) ────────────────────────────
 
-export interface TransactionCost {
-  userFee: string; // Fee charged to user
-  merchantMDR?: string; // Merchant Discount Rate (for P2M)
-  feeDetails: string; // Detailed explanation
-  taxApplicable: boolean;
-  calculateFee: (amount: number, isP2M: boolean) => number;
-}
+// How the sender funds the payment. Card funding is materially more
+// expensive than pulling from a bank account over ACH.
+export type FundingSource = "bank" | "debit" | "credit";
 
-export const TRANSACTION_COSTS: Record<Rail, TransactionCost> = {
-  venmo: {
-    userFee: "Free (bank), 3% (card)",
-    merchantMDR: "1.9% + $0.10",
-    feeDetails: "P2P transfers free from bank or balance. Credit/debit card funding costs 3%. Instant transfer to bank: 1.75% (min $0.25, max $25).",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => {
-      return 0; // P2P from bank is free
-    },
-  },
-  cashapp: {
-    userFee: "Free (standard), 0.5-1.75% (instant)",
-    merchantMDR: "2.75%",
-    feeDetails: "Standard transfers free. Instant deposit: 0.5%-1.75% (min $0.25). Credit card funding: 3%.",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => {
-      return 0; // Standard is free
-    },
-  },
-  zelle: {
-    userFee: "Free",
-    merchantMDR: "N/A",
-    feeDetails: "Free P2P transfers through participating banks. Some banks may charge for non-customer transfers.",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => 0,
-  },
-  paypal: {
-    userFee: "Free (balance/bank), 2.9% (card)",
-    merchantMDR: "2.9% + $0.30",
-    feeDetails: "P2P free when funded by balance or bank. Credit/debit: 2.9%. Instant transfer: 1.75% (max $25).",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => 0,
-  },
-  applepay: {
-    userFee: "Free (debit), 3% (credit)",
-    merchantMDR: "Varies by processor",
-    feeDetails: "Apple Cash P2P: Free with debit, 3% with credit. Instant transfer: 1.5% (min $0.25, max $15).",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => 0,
-  },
-  ach: {
-    userFee: "$0 - $3",
-    merchantMDR: "N/A",
-    feeDetails: "Most banks offer free ACH. Some charge $0-$3 per transfer. Settlement: 1-3 business days.",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => {
-      return 0; // Most banks free
-    },
-  },
-  wire: {
-    userFee: "$15 - $35 (domestic), $35-$50 (international)",
-    merchantMDR: "N/A",
-    feeDetails: "Domestic wire: $15-$35. Same-day settlement. Incoming wires often $0-$15.",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => {
-      return 25; // Average domestic wire fee
-    },
-  },
+export const FUNDING_SOURCE_META: Record<
+  FundingSource,
+  { label: string; shortLabel: string; description: string }
+> = {
   bank: {
-    userFee: "Varies by method",
-    merchantMDR: "N/A",
-    feeDetails: "Depends on transfer method (ACH/Wire). See individual method costs.",
-    taxApplicable: false,
-    calculateFee: (amount: number, isP2M: boolean) => 0,
+    label: "Bank account (ACH)",
+    shortLabel: "Bank / ACH",
+    description: "Pulled from your linked checking account",
+  },
+  debit: {
+    label: "Debit card",
+    shortLabel: "Debit card",
+    description: "Instant funding from your debit card",
+  },
+  credit: {
+    label: "Credit card",
+    shortLabel: "Credit card",
+    description: "Highest cost — interchange is passed through",
   },
 };
 
+export interface TransactionCost {
+  userFee: string; // Headline fee summary
+  merchantMDR?: string; // Merchant Discount Rate (for P2M)
+  feeDetails: string; // Detailed explanation
+  taxApplicable: boolean;
+  supportedFunding: FundingSource[]; // Funding sources this rail accepts
+  // Percentage + fixed component charged to the sender, per funding source
+  feeSchedule: Record<FundingSource, { percent: number; fixed: number; min?: number; max?: number }>;
+  calculateFee: (amount: number, isP2M: boolean, funding?: FundingSource) => number;
+}
+
+// Shared fee math so every rail applies percent/fixed/min/max the same way
+function applySchedule(
+  schedule: { percent: number; fixed: number; min?: number; max?: number },
+  amount: number
+): number {
+  if (schedule.percent === 0 && schedule.fixed === 0) return 0;
+  let fee = (amount * schedule.percent) / 100 + schedule.fixed;
+  if (schedule.min !== undefined) fee = Math.max(fee, schedule.min);
+  if (schedule.max !== undefined) fee = Math.min(fee, schedule.max);
+  return Math.round(fee * 100) / 100;
+}
+
+function makeCalculateFee(
+  feeSchedule: TransactionCost["feeSchedule"],
+  supportedFunding: FundingSource[]
+): TransactionCost["calculateFee"] {
+  return (amount: number, _isP2M: boolean, funding: FundingSource = "bank") => {
+    const effective = supportedFunding.includes(funding) ? funding : supportedFunding[0];
+    return applySchedule(feeSchedule[effective], amount);
+  };
+}
+
+const RAIL_FEE_SCHEDULES: Record<
+  Rail,
+  { supportedFunding: FundingSource[]; feeSchedule: TransactionCost["feeSchedule"] }
+> = {
+  venmo: {
+    supportedFunding: ["bank", "debit", "credit"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0 },
+      debit: { percent: 0, fixed: 0 },
+      credit: { percent: 3, fixed: 0 },
+    },
+  },
+  cashapp: {
+    supportedFunding: ["bank", "debit", "credit"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0 },
+      debit: { percent: 0, fixed: 0 },
+      credit: { percent: 3, fixed: 0 },
+    },
+  },
+  zelle: {
+    // Zelle is bank-to-bank only; cards are not supported at all
+    supportedFunding: ["bank"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0 },
+      debit: { percent: 0, fixed: 0 },
+      credit: { percent: 0, fixed: 0 },
+    },
+  },
+  paypal: {
+    supportedFunding: ["bank", "debit", "credit"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0 },
+      debit: { percent: 2.9, fixed: 0.3 },
+      credit: { percent: 2.9, fixed: 0.3 },
+    },
+  },
+  applepay: {
+    supportedFunding: ["debit", "credit"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0 },
+      debit: { percent: 0, fixed: 0 },
+      credit: { percent: 3, fixed: 0, min: 0.25 },
+    },
+  },
+  ach: {
+    // ACH debit only — a card can never fund an ACH transfer
+    supportedFunding: ["bank"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0.8 },
+      debit: { percent: 0, fixed: 0.8 },
+      credit: { percent: 0, fixed: 0.8 },
+    },
+  },
+  wire: {
+    supportedFunding: ["bank"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 25 },
+      debit: { percent: 0, fixed: 25 },
+      credit: { percent: 0, fixed: 25 },
+    },
+  },
+  bank: {
+    supportedFunding: ["bank"],
+    feeSchedule: {
+      bank: { percent: 0, fixed: 0.8 },
+      debit: { percent: 0, fixed: 0.8 },
+      credit: { percent: 0, fixed: 0.8 },
+    },
+  },
+};
+
+export const TRANSACTION_COSTS: Record<Rail, TransactionCost> = {
+  venmo: {
+    userFee: "Free from bank/debit · 3% on credit card",
+    merchantMDR: "1.9% + $0.10",
+    feeDetails:
+      "Free when funded by your bank account or debit card. Credit card funding adds a flat 3% of the transfer amount. Instant payout to a bank costs 1.75% separately.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.venmo,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.venmo.feeSchedule,
+      RAIL_FEE_SCHEDULES.venmo.supportedFunding
+    ),
+  },
+  cashapp: {
+    userFee: "Free from bank/debit · 3% on credit card",
+    merchantMDR: "2.75%",
+    feeDetails:
+      "Standard transfers from bank or debit are free. Credit card funding adds 3%. Instant deposit to a linked bank costs 0.5%-1.75% separately.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.cashapp,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.cashapp.feeSchedule,
+      RAIL_FEE_SCHEDULES.cashapp.supportedFunding
+    ),
+  },
+  zelle: {
+    userFee: "Always free — bank funded only",
+    merchantMDR: "N/A",
+    feeDetails:
+      "Zelle moves money directly between enrolled bank accounts, so there is no card option and no sender fee. Settlement is typically within minutes.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.zelle,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.zelle.feeSchedule,
+      RAIL_FEE_SCHEDULES.zelle.supportedFunding
+    ),
+  },
+  paypal: {
+    userFee: "Free from bank · 2.9% + $0.30 on cards",
+    merchantMDR: "2.9% + $0.30",
+    feeDetails:
+      "Free when funded by PayPal balance or a linked bank. Debit and credit card funding costs 2.9% of the amount plus a $0.30 fixed fee.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.paypal,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.paypal.feeSchedule,
+      RAIL_FEE_SCHEDULES.paypal.supportedFunding
+    ),
+  },
+  applepay: {
+    userFee: "Free on debit · 3% on credit card",
+    merchantMDR: "Varies by processor",
+    feeDetails:
+      "Apple Cash is funded by a card, not ACH. Debit funding is free; credit card funding costs 3% (minimum $0.25).",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.applepay,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.applepay.feeSchedule,
+      RAIL_FEE_SCHEDULES.applepay.supportedFunding
+    ),
+  },
+  ach: {
+    userFee: "$0.80 flat — no card funding",
+    merchantMDR: "N/A",
+    feeDetails:
+      "ACH is a flat $0.80 per transfer regardless of amount, which makes it the cheapest option for large payments. Cards cannot fund an ACH debit. Settles in 1-3 business days.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.ach,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.ach.feeSchedule,
+      RAIL_FEE_SCHEDULES.ach.supportedFunding
+    ),
+  },
+  wire: {
+    userFee: "$25 flat — no card funding",
+    merchantMDR: "N/A",
+    feeDetails:
+      "Domestic wires are a flat $25 debited from your bank account. Cards cannot fund a wire. Same-day settlement via Fedwire.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.wire,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.wire.feeSchedule,
+      RAIL_FEE_SCHEDULES.wire.supportedFunding
+    ),
+  },
+  bank: {
+    userFee: "$0.80 flat — no card funding",
+    merchantMDR: "N/A",
+    feeDetails:
+      "Standard bank transfer priced like ACH at a flat $0.80 per transfer. Cards are not accepted as a funding source.",
+    taxApplicable: false,
+    ...RAIL_FEE_SCHEDULES.bank,
+    calculateFee: makeCalculateFee(
+      RAIL_FEE_SCHEDULES.bank.feeSchedule,
+      RAIL_FEE_SCHEDULES.bank.supportedFunding
+    ),
+  },
+};
+
+// True when the rail can be funded by the chosen source (Zelle/ACH/wire reject cards)
+export function railSupportsFunding(rail: Rail, funding: FundingSource): boolean {
+  return TRANSACTION_COSTS[rail].supportedFunding.includes(funding);
+}
+
+// The funding source a rail will actually use, given the sender's preference
+export function resolveFundingSource(rail: Rail, funding: FundingSource): FundingSource {
+  const supported = TRANSACTION_COSTS[rail].supportedFunding;
+  return supported.includes(funding) ? funding : supported[0];
+}
+
 // Helper function to get formatted fee string
-export function getTransactionFeeDisplay(rail: Rail, amount: number, isP2M: boolean = false): string {
+export function getTransactionFeeDisplay(
+  rail: Rail,
+  amount: number,
+  isP2M: boolean = false,
+  funding: FundingSource = "bank"
+): string {
   const cost = TRANSACTION_COSTS[rail];
-  const calculatedFee = cost.calculateFee(amount, isP2M);
-  
+  const calculatedFee = cost.calculateFee(amount, isP2M, funding);
+
   if (calculatedFee === 0) {
     return "Free";
   }
-  
+
   return `$${calculatedFee.toFixed(2)}`;
 }
 
@@ -300,14 +470,30 @@ export function checkVelocityLimit(
   };
 }
 
-export function computeRouteScore(inst: PaymentInstrument): number {
+export function computeRouteScore(
+  inst: PaymentInstrument,
+  amount = 0,
+  funding: FundingSource = "bank"
+): number {
   let score = inst.successRate;
   if (inst.settlementSpeed === "Instant") score += 5;
   else if (inst.settlementSpeed === "Same-day") score += 3;
-  const feeNum = Number.parseFloat(inst.fee.replace(/[^0-9.]/g, "")) || 0;
-  if (feeNum === 0) score += 4;
-  else if (feeNum < 1) score += 2;
-  return Math.min(100, score);
+
+  // Rails that cannot accept the sender's funding source are heavily penalized
+  if (!railSupportsFunding(inst.rail, funding)) score -= 12;
+
+  // Score the real fee for this amount + funding source, not a static string
+  const fee = amount > 0
+    ? TRANSACTION_COSTS[inst.rail].calculateFee(amount, false, funding)
+    : Number.parseFloat(inst.fee.replace(/[^0-9.]/g, "")) || 0;
+
+  if (fee === 0) score += 6;
+  else if (fee <= 1) score += 4;
+  else if (fee <= 5) score += 1;
+  else if (fee <= 25) score -= 4;
+  else score -= 8;
+
+  return Math.max(0, Math.min(100, score));
 }
 
 // Helper function to format USD currency
@@ -338,7 +524,7 @@ export const CONTACTS: Contact[] = [
     instruments: [
       { id: "i1", rail: "venmo", label: "Venmo", detail: "@sarahjohnson", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i2", rail: "zelle", label: "Zelle", detail: "sarah.j@email.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
-      { id: "i3", rail: "ach", label: "Chase Checking", detail: "****4521", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0", successRate: 98, enabled: true },
+      { id: "i3", rail: "ach", label: "Chase Checking", detail: "****4521", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 98, enabled: true },
       { id: "i4", rail: "cashapp", label: "Cash App", detail: "$sarahj", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 97, enabled: true },
     ],
   },
@@ -357,7 +543,7 @@ export const CONTACTS: Contact[] = [
     instruments: [
       { id: "i5", rail: "zelle", label: "Zelle", detail: "+1 (415) 555-0123", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "i6", rail: "venmo", label: "Venmo", detail: "@mikechen", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
-      { id: "i7", rail: "ach", label: "Bank of America", detail: "****7710", routingNumber: "026009593", currency: "USD", settlementSpeed: "1-3 days", fee: "$0", successRate: 97, enabled: true },
+      { id: "i7", rail: "ach", label: "Bank of America", detail: "****7710", routingNumber: "026009593", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 97, enabled: true },
     ],
   },
   {
@@ -400,7 +586,7 @@ export const CONTACTS: Contact[] = [
     id: "c5",
     name: "Ashley Martinez",
     upa: "@ashleymartinez",
-    upaType: "username",
+    upaType: "venmo",
     contactType: "person",
     avatar: "bg-chart-5",
     initials: "AM",
@@ -428,7 +614,7 @@ export const CONTACTS: Contact[] = [
     favorite: false,
     instruments: [
       { id: "i17", rail: "zelle", label: "Zelle", detail: "+1 (310) 555-0789", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
-      { id: "i18", rail: "ach", label: "Citibank", detail: "****1199", routingNumber: "021000089", currency: "USD", settlementSpeed: "1-3 days", fee: "$0", successRate: 96, enabled: true },
+      { id: "i18", rail: "ach", label: "Citibank", detail: "****1199", routingNumber: "021000089", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 96, enabled: true },
       { id: "i19", rail: "cashapp", label: "Cash App", detail: "$davidthompson", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 95, enabled: true },
     ],
   },
@@ -450,7 +636,7 @@ export const CONTACTS: Contact[] = [
       { id: "i22", rail: "applepay", label: "Apple Pay", detail: "jess***@icloud.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 96, enabled: true },
     ],
   },
-  // ─── Business / Merchant contacts ─────────────────────────────────
+  // ─── Business / Merchant contacts ─────────────────────────���───────
   {
     id: "b1",
     name: "Amazon",
@@ -467,14 +653,14 @@ export const CONTACTS: Contact[] = [
     instruments: [
       { id: "bi1", rail: "paypal", label: "Amazon Pay", detail: "payments@amazon.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
       { id: "bi2", rail: "venmo", label: "Venmo", detail: "@amazonpay", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
-      { id: "bi3", rail: "ach", label: "Chase Business", detail: "****8821", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0", successRate: 99, enabled: true },
+      { id: "bi3", rail: "ach", label: "Chase Business", detail: "****8821", routingNumber: "021000021", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 99, enabled: true },
     ],
   },
   {
     id: "b2",
     name: "DoorDash",
     upa: "@doordash",
-    upaType: "username",
+    upaType: "venmo",
     contactType: "business",
     category: "Food Delivery",
     avatar: "bg-warning",
@@ -493,7 +679,7 @@ export const CONTACTS: Contact[] = [
     id: "b3",
     name: "Uber Eats",
     upa: "@ubereats",
-    upaType: "username",
+    upaType: "venmo",
     contactType: "business",
     category: "Food Delivery",
     avatar: "bg-destructive",
@@ -523,7 +709,7 @@ export const CONTACTS: Contact[] = [
     favorite: true,
     instruments: [
       { id: "bi11", rail: "paypal", label: "PayPal", detail: "payments@bestbuy.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 99, enabled: true },
-      { id: "bi12", rail: "ach", label: "Business Account", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "1-3 days", fee: "$0", successRate: 98, enabled: true },
+      { id: "bi12", rail: "ach", label: "Business Account", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 98, enabled: true },
       { id: "bi13", rail: "wire", label: "Wire Transfer", detail: "****5501", routingNumber: "091000019", currency: "USD", settlementSpeed: "Same-day", fee: "$25", successRate: 99, enabled: true },
     ],
   },
@@ -541,7 +727,7 @@ export const CONTACTS: Contact[] = [
     verified: true,
     favorite: false,
     instruments: [
-      { id: "bi14", rail: "ach", label: "ACH Payment", detail: "PG&E Billing", currency: "USD", settlementSpeed: "1-3 days", fee: "$0", successRate: 99, enabled: true },
+      { id: "bi14", rail: "ach", label: "ACH Payment", detail: "PG&E Billing", currency: "USD", settlementSpeed: "1-3 days", fee: "$0.80", successRate: 99, enabled: true },
       { id: "bi15", rail: "paypal", label: "PayPal", detail: "billing@pge.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 98, enabled: true },
       { id: "bi16", rail: "zelle", label: "Zelle", detail: "billing@pge.com", currency: "USD", settlementSpeed: "Instant", fee: "$0", successRate: 97, enabled: true },
     ],
