@@ -6,15 +6,23 @@ import { DesktopSidebar } from "@/components/desktop-sidebar";
 import { HomeScreen } from "@/components/home-screen";
 import { SendMoney } from "@/components/send-money";
 import { ContactsScreen } from "@/components/contacts-screen";
+import { PayInvoices } from "@/components/pay-invoices";
 import { ActivityScreen } from "@/components/activity-screen";
 import { ProfileScreen } from "@/components/profile-screen";
 import { Wallet } from "lucide-react";
 
-type Tab = "home" | "send" | "contacts" | "activity" | "profile";
+type Tab =
+  | "home"
+  | "send"
+  | "invoices"
+  | "contacts"
+  | "activity"
+  | "profile";
 
 const TAB_TITLES: Record<Tab, string> = {
   home: "Dashboard",
   send: "Send Money",
+  invoices: "Pay Invoices",
   contacts: "Contacts",
   activity: "Activity",
   profile: "Profile",
@@ -23,6 +31,8 @@ const TAB_TITLES: Record<Tab, string> = {
 const TAB_SUBTITLES: Record<Tab, string> = {
   home: "Welcome back. Pay anyone via Venmo, Zelle, or bank transfer.",
   send: "Pay via Venmo, Cash App, Zelle, PayPal -- the Routing Agent picks the best option.",
+  invoices:
+    "Supplier invoices awaiting payment. Negotiate early payment discounts, then pick the rail.",
   contacts: "Browse contacts and their linked usernames & bank accounts.",
   activity: "View your complete transaction history.",
   profile: "Manage your account, payment methods, and preferences.",
@@ -86,6 +96,7 @@ export function AppShell() {
                 onBack={() => handleNavigate("home")}
               />
             )}
+            {activeTab === "invoices" && <PayInvoices />}
             {activeTab === "contacts" && (
               <ContactsScreen onSendTo={handleSendTo} />
             )}

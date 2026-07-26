@@ -7,6 +7,7 @@ import {
   Users,
   Activity,
   User,
+  FileText,
   Wallet,
   Sparkles,
   Smartphone,
@@ -19,11 +20,18 @@ import {
   AtSign,
 } from "lucide-react";
 
-type Tab = "home" | "send" | "contacts" | "activity" | "profile";
+type Tab =
+  | "home"
+  | "send"
+  | "invoices"
+  | "contacts"
+  | "activity"
+  | "profile";
 
 const NAV: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "Dashboard", icon: Home },
   { key: "send", label: "Send Money", icon: Send },
+  { key: "invoices", label: "Pay Invoices", icon: FileText },
   { key: "contacts", label: "Contacts", icon: Users },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "profile", label: "Profile", icon: User },

@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { FileText, Globe, Tag, CheckCircle2, Wallet } from "lucide-react";
+import {
+  FileText,
+  Globe,
+  Tag,
+  CheckCircle2,
+  Wallet,
+  Search,
+} from "lucide-react";
 import { formatUSD } from "@/lib/data";
 import {
   INVOICES,
@@ -28,12 +35,9 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "negotiating", label: "In negotiation" },
 ];
 
-interface Props {
-  searchQuery: string;
-}
-
-export function PayInvoices({ searchQuery }: Props) {
+export function PayInvoices() {
   const [invoices, setInvoices] = useState<Invoice[]>(INVOICES);
+  const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -240,7 +244,28 @@ export function PayInvoices({ searchQuery }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 p-4">
+      <div>
+        <h1 className="text-lg font-bold text-foreground">Pay Invoices</h1>
+        {/* Desktop header already carries this subtitle, so only show it on mobile */}
+        <p className="text-xs text-muted-foreground lg:hidden">
+          Invoices received from suppliers. Negotiate an early payment discount,
+          then choose the rail that settles it.
+        </p>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Supplier, invoice number, or PO..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
         <div className="flex flex-col gap-0.5 rounded-xl bg-card p-3 shadow-sm">
