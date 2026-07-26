@@ -25,7 +25,9 @@ import {
   AtSign,
   Linkedin,
   Coins,
+  FileText,
 } from "lucide-react";
+import { PayInvoices } from "@/components/pay-invoices";
 import {
   CONTACTS,
   RAIL_META,
@@ -62,6 +64,9 @@ export function ContactsScreen({ onSendTo }: Props) {
   );
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // The "Pay Invoices" tab swaps the contact directory for the AP queue
+  const isInvoices = typeFilter === "business";
+
   const filtered = useMemo(() => {
     let result = CONTACTS;
     if (typeFilter === "identities")
@@ -84,14 +89,26 @@ export function ContactsScreen({ onSendTo }: Props) {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-lg font-bold text-foreground">Contacts</h1>
+      <h1 className="text-lg font-bold text-foreground">
+        {isInvoices ? "Pay Invoices" : "Contacts"}
+      </h1>
+      {isInvoices && (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Invoices received from suppliers. Negotiate an early payment discount,
+          then choose the rail that settles it.
+        </p>
+      )}
 
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Name, username, or phone number..."
+          placeholder={
+            isInvoices
+              ? "Supplier, invoice number, or PO..."
+              : "Name, username, or phone number..."
+          }
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -104,7 +121,7 @@ export function ContactsScreen({ onSendTo }: Props) {
           [
             { key: "all", label: "All", icon: null },
             { key: "identities", label: "Identities", icon: Users },
-            { key: "business", label: "Business", icon: Store },
+            { key: "business", label: "Pay Invoices", icon: FileText },
           ] as const
         ).map(({ key, label, icon: TypeIcon }) => (
           <button
@@ -125,7 +142,7 @@ export function ContactsScreen({ onSendTo }: Props) {
       </div>
 
       {/* Sub filter */}
-      <div className="flex gap-2">
+      <div className={cn("flex gap-2", isInvoices && "hidden")}>
         {(["all", "favorites", "verified"] as const).map((f) => (
           <button
             key={f}
@@ -145,12 +162,16 @@ export function ContactsScreen({ onSendTo }: Props) {
         ))}
       </div>
 
+      {isInvoices && <PayInvoices searchQuery={searchQuery} />}
+
+      {!isInvoices && (
       <p className="text-xs text-muted-foreground">
         {filtered.length} contact{filtered.length !== 1 ? "s" : ""}
       </p>
+      )}
 
       {/* Contact List */}
-      <div className="flex flex-col gap-2">
+      <div className={cn("flex flex-col gap-2", isInvoices && "hidden")}>
         {filtered.map((contact) => {
           const isExpanded = expandedId === contact.id;
           return (
