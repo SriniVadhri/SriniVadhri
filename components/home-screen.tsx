@@ -289,9 +289,9 @@ export function HomeScreen({ onNavigate, onSendTo }: Props) {
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">
-              Pay to an Identity
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground break-words">
+              MoneyMovementUsingAgentsAndIdentity
             </h3>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
               Pay anyone via Venmo, Cash App, Zelle, PayPal, or bank transfer.

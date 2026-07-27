@@ -5,7 +5,7 @@ import "./globals.css";
 const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Pay to Anyone - Send Money Instantly",
+  title: "MoneyMovementUsingAgentsAndIdentity",
   description:
     "Send money to anyone using just their phone number or email. Our Routing Agent selects the fastest, cheapest, and most reliable payment rail automatically.",
 };

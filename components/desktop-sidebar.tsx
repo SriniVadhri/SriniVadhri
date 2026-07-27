@@ -92,12 +92,14 @@ export function DesktopSidebar({
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <Wallet className="h-5 w-5" />
         </div>
-        <div>
-          <h1 className="text-base font-bold text-foreground tracking-tight">
-            Pay to an Identity
+        {/* min-w-0 + break-words let the single long brand token wrap
+            instead of overflowing the fixed-width sidebar */}
+        <div className="min-w-0">
+          <h1 className="text-sm font-bold leading-tight text-foreground tracking-tight break-words">
+            MoneyMovementUsingAgentsAndIdentity
           </h1>
           <p className="text-[10px] text-muted-foreground">
-            P2P Payments & Bank Transfers
+            P2P Payments &amp; Bank Transfers
           </p>
         </div>
       </div>
@@ -128,10 +130,10 @@ export function DesktopSidebar({
           {/* PayKaro explainer */}
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-bold text-foreground">
-                Pay to an Identity
-              </h3>
+          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+          <h3 className="min-w-0 text-xs font-bold leading-tight text-foreground break-words">
+            MoneyMovementUsingAgentsAndIdentity
+          </h3>
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               Pay anyone via Venmo, Cash App, Zelle, PayPal, or bank transfer.

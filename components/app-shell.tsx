@@ -76,8 +76,8 @@ export function AppShell() {
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Wallet className="h-4 w-4" />
           </div>
-          <span className="text-sm font-bold text-foreground tracking-tight">
-            Pay to an Identity
+          <span className="min-w-0 text-xs font-bold leading-tight text-foreground tracking-tight break-words">
+            MoneyMovementUsingAgentsAndIdentity
           </span>
         </header>
 
