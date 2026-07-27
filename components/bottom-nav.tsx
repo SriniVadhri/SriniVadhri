@@ -1,13 +1,20 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Home, Send, Users, Activity, User } from "lucide-react";
+import { Home, Send, Users, Activity, User, FileText } from "lucide-react";
 
-type Tab = "home" | "send" | "contacts" | "activity" | "profile";
+type Tab =
+  | "home"
+  | "send"
+  | "invoices"
+  | "contacts"
+  | "activity"
+  | "profile";
 
 const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "Home", icon: Home },
   { key: "send", label: "Send", icon: Send },
+  { key: "invoices", label: "Invoices", icon: FileText },
   { key: "contacts", label: "Contacts", icon: Users },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "profile", label: "Profile", icon: User },
@@ -28,7 +35,7 @@ export function BottomNav({
           type="button"
           onClick={() => onNavigate(key)}
           className={cn(
-            "flex flex-col items-center gap-0.5 px-3 py-1 transition-colors",
+            "flex flex-1 flex-col items-center gap-0.5 px-1 py-1 transition-colors",
             active === key
               ? "text-primary"
               : "text-muted-foreground hover:text-foreground"
